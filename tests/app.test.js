@@ -306,10 +306,17 @@ describe('app.js — host start/stop sharing', () => {
     // Fire the track end event (e.g. user clicked the browser's "Stop sharing")
     track.onended();
 
-    // After stop: srcObject is null, stopBtn hidden, startBtn visible
+    // After stop (v1 limitation: cannot restart sharing in the same room):
+    //   - srcObject is null
+    //   - stopBtn is hidden
+    //   - startBtn is ALSO hidden (user must re-create the room to share again)
+    //   - an error toast tells the user what to do
     expect(document.getElementById('remoteVideo').srcObject).toBeNull();
     expect(stopBtn.classList.contains('hidden')).toBe(true);
-    expect(startBtn.classList.contains('hidden')).toBe(false);
+    expect(startBtn.classList.contains('hidden')).toBe(true);
+    const errorToast = document.getElementById('errorToast');
+    expect(errorToast.classList.contains('hidden')).toBe(false);
+    expect(errorToast.textContent).toMatch(/重新创建房间/);
   });
 });
 

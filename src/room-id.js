@@ -1,6 +1,9 @@
 // Room ID generation and parsing.
 // IDs are 12 alphanumeric chars (62-char alphabet), displayed as 4-4-4 hyphenated.
-// Total space: 62^12 ≈ 3e21, effectively unguessable.
+// Total space: 62^12 ≈ 3e21, effectively unguessable. We use modulo for mapping
+// bytes to alphabet, which has a slight bias (~3% extra probability for the
+// first 8 alphabet entries) but with 62^12 / 256^12 ≈ 67 bits of effective
+// entropy this is well above "unguessable" for a private tool.
 
 const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
 const SEGMENT_LEN = 4;

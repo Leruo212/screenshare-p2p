@@ -125,6 +125,10 @@ h1 {
   50% { opacity: 0.35; }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.waiting { animation: none; }
+}
+
 /* ---- Error toast -------------------------------------------------------- */
 
 .error {

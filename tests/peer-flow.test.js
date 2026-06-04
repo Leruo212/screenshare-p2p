@@ -205,10 +205,13 @@ describe('createHost', () => {
     });
     fireOpenFor(createdPeers[0]);
 
+    // Simulate the viewer fully present: data connection AND media call.
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
+    const mc = new MockMediaConnection('viewer-1', null);
+    createdPeers[0].emit('call', mc);
 
-    // Simulate viewer hanging up.
+    // Simulate viewer hanging up via the data channel.
     dataConn.emit('close');
 
     expect(onViewerDisconnected).toHaveBeenCalledTimes(1);
