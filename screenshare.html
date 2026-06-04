@@ -581,36 +581,66 @@ function createHost({ roomId, callbacks }) {
 //
 // When the host answers, the resulting MediaConnection emits 'stream' with
 // the host's local MediaStream.
+//
+// IMPORTANT: we must wait for the peer's 'open' event before calling
+// peer.connect() / peer.call(). In PeerJS 1.5.5, both return `undefined` while
+// the peer is in the "disconnected" state (pre-broker-handshake), and calling
+// `.on()` on undefined throws "Cannot read properties of undefined".
 function connectAsViewer({ hostId, callbacks }) {
   const Peer = requirePeer();
   const peer = new Peer();
 
-  // Open the data channel.
-  const connection = peer.connect(hostId);
+  // The connection handles aren't available until the broker has confirmed
+  // the viewer's ID. They may also be undefined if the peer flips to a
+  // disconnected state mid-handshake (rare but possible).
+  let connection = null;
+  let mediaCall = null;
 
-  connection.on('open', () => {
-    callbacks.onConnected?.();
-  });
-  connection.on('close', () => {
-    callbacks.onDisconnected?.();
-  });
-  connection.on('data', () => {
-    // No data-channel protocol in v1.
-  });
-  if (callbacks.onError) {
-    connection.on('error', (err) => callbacks.onError(err));
+  function dial() {
+    connection = peer.connect(hostId);
+    if (connection) {
+      connection.on('open', () => {
+        callbacks.onConnected?.();
+      });
+      connection.on('close', () => {
+        callbacks.onDisconnected?.();
+      });
+      connection.on('data', () => {
+        // No data-channel protocol in v1.
+      });
+      if (callbacks.onError) {
+        connection.on('error', (err) => callbacks.onError(err));
+      }
+    } else if (callbacks.onError) {
+      callbacks.onError(new Error('无法建立数据通道'));
+    }
+
+    // Request the host's stream. peer.call() with null media means
+    // "I have nothing to send, please stream TO me".
+    mediaCall = peer.call(hostId, null);
+    if (mediaCall) {
+      mediaCall.on('stream', (remoteStream) => {
+        callbacks.onRemoteStream?.(remoteStream);
+      });
+      mediaCall.on('close', () => {
+        // Don't double-fire: the data channel's close is the source of truth.
+      });
+      if (callbacks.onError) {
+        mediaCall.on('error', (err) => callbacks.onError(err));
+      }
+    } else if (callbacks.onError) {
+      callbacks.onError(
+        new Error('无法发起媒体连接，请稍后重试（peer 未就绪）')
+      );
+    }
   }
 
-  // Request the host's stream.
-  const mediaCall = peer.call(hostId, null);
-  mediaCall.on('stream', (remoteStream) => {
-    callbacks.onRemoteStream?.(remoteStream);
-  });
-  mediaCall.on('close', () => {
-    // Don't double-fire: the data channel's close is the source of truth.
-  });
-  if (callbacks.onError) {
-    mediaCall.on('error', (err) => callbacks.onError(err));
+  // Defer dialing until the broker confirms the viewer's ID. If 'open' has
+  // already fired (rare in practice but possible), dial immediately.
+  if (peer.open) {
+    dial();
+  } else {
+    peer.once('open', dial);
   }
 
   if (callbacks.onError) {
@@ -618,15 +648,17 @@ function connectAsViewer({ hostId, callbacks }) {
   }
 
   return {
-    connection,
+    get connection() {
+      return connection;
+    },
     close() {
       try {
-        connection.close();
+        connection?.close();
       } catch {
         /* ignore */
       }
       try {
-        mediaCall.close();
+        mediaCall?.close();
       } catch {
         /* ignore */
       }
