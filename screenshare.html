@@ -1,0 +1,1335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScreenShare P2P</title>
+  <style>/* ============================================================================
+ * ScreenShare P2P — styles
+ * Dark theme, mobile-friendly, system font stack. No external CSS.
+ * ========================================================================== */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+:root {
+  --bg-primary: #0f0f1a;
+  --bg-secondary: #1a1a2e;
+  --bg-card: #16213e;
+  --bg-elev: #1f2747;
+  --accent: #e94560;
+  --accent-hover: #ff6b6b;
+  --text-primary: #ffffff;
+  --text-secondary: #a0a0b0;
+  --text-muted: #6b6b80;
+  --border: #2a2a4a;
+  --border-strong: #3a3a5a;
+  --success: #4ade80;
+  --warn: #fbbf24;
+  --error: #f87171;
+  --error-bg: #3a1a1f;
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow-glow: 0 4px 20px rgba(233, 69, 96, 0.3);
+}
+
+html, body {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  padding: 24px 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  line-height: 1.5;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* ---- Header ------------------------------------------------------------- */
+
+.page-header {
+  text-align: center;
+  margin-bottom: 28px;
+}
+
+h1 {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 6px;
+  background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  color: transparent;
+}
+
+.subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  letter-spacing: 0.5px;
+}
+
+/* ---- Status bar --------------------------------------------------------- */
+
+.status-bar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 20px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+#statusText {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  transition: background 0.2s, box-shadow 0.2s;
+  flex-shrink: 0;
+}
+
+.status-dot.connected {
+  background: var(--success);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.6);
+}
+
+.status-dot.waiting {
+  background: var(--warn);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .status-dot.waiting { animation: none; }
+}
+
+/* ---- Error toast -------------------------------------------------------- */
+
+.error {
+  background: var(--error-bg);
+  border: 1px solid var(--error);
+  color: var(--error);
+  border-radius: var(--radius);
+  padding: 12px 16px;
+  margin-bottom: 20px;
+  font-size: 14px;
+  word-break: break-word;
+}
+
+/* ---- Panels ------------------------------------------------------------- */
+
+.panel {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  margin-bottom: 20px;
+}
+
+.panel-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 12px;
+  color: var(--text-primary);
+}
+
+.panel-hint,
+.hint {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 16px;
+  line-height: 1.6;
+}
+
+.hint {
+  margin-top: 4px;
+  margin-bottom: 16px;
+}
+
+/* ---- Buttons ------------------------------------------------------------ */
+
+.btn {
+  padding: 14px 24px;
+  border-radius: 10px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border: none;
+  transition: transform 0.15s, box-shadow 0.15s, background 0.15s,
+    color 0.15s, border-color 0.15s, opacity 0.15s;
+  font-family: inherit;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+  color: white;
+  box-shadow: var(--shadow-glow);
+}
+
+.btn-primary:hover:not([disabled]) {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 24px rgba(233, 69, 96, 0.45);
+}
+
+.btn-primary:active:not([disabled]) {
+  transform: translateY(0);
+}
+
+.btn-primary[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.btn-secondary {
+  background: var(--bg-card);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.btn-secondary[disabled] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.row {
+  display: flex;
+  gap: 12px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.row > .btn {
+  flex: 1 1 0;
+  min-width: 120px;
+}
+
+/* ---- Info box & share link --------------------------------------------- */
+
+.info-box {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.info-box h4 {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-weight: 600;
+}
+
+.share-link-row {
+  display: flex;
+  gap: 10px;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+#shareLink {
+  flex: 1 1 0;
+  min-width: 0;
+  font-family: "SF Mono", Menlo, Monaco, Consolas, "Liberation Mono",
+    "Courier New", monospace;
+  font-size: 12px;
+  color: var(--accent);
+  background: var(--bg-primary);
+  padding: 10px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  text-decoration: none;
+  word-break: break-all;
+  display: flex;
+  align-items: center;
+  line-height: 1.4;
+  transition: border-color 0.15s;
+}
+
+#shareLink:hover {
+  border-color: var(--accent);
+  text-decoration: none;
+}
+
+.copy-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-family: inherit;
+  transition: background 0.15s;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.copy-btn:hover {
+  background: var(--accent-hover);
+}
+
+.copy-btn:active {
+  transform: translateY(1px);
+}
+
+/* ---- Video area --------------------------------------------------------- */
+
+.video-area {
+  width: 100%;
+  background: #000;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+.video-area video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+/* ---- Visibility utility ------------------------------------------------- */
+
+.hidden {
+  display: none !important;
+}
+
+/* ---- Mobile tweaks ------------------------------------------------------ */
+
+@media (max-width: 600px) {
+  body { padding: 16px 12px; }
+  h1 { font-size: 26px; }
+  .panel { padding: 20px; }
+  .row > .btn { flex: 1 1 100%; }
+  .share-link-row { flex-direction: column; }
+  .copy-btn { width: 100%; }
+  #statusText { font-size: 13px; }
+}
+</style>
+</head>
+<body>
+  <div class="container">
+    <header class="page-header">
+      <h1>ScreenShare P2P</h1>
+      <p class="subtitle">P2P直连 · 无需中转 · 链接分享即可</p>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-row">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">未连接</span>
+      </div>
+    </div>
+
+    <div class="error hidden" id="errorToast" role="alert"></div>
+
+    <!-- Landing -->
+    <div class="panel" id="landingPanel">
+      <div class="panel-title">开始</div>
+      <p class="panel-hint">创建一个房间并把链接发给朋友，或加入朋友发来的链接（链接会带 # 房间号）。</p>
+      <div class="row">
+        <button class="btn btn-primary" id="createBtn">创建房间</button>
+        <button class="btn btn-secondary" id="joinBtn">加入房间</button>
+      </div>
+    </div>
+
+    <!-- Host Lobby -->
+    <div class="panel hidden" id="hostLobbyPanel">
+      <div class="panel-title">你的房间</div>
+      <p class="panel-hint">把下面的链接发给朋友。朋友打开后会自动连接。</p>
+      <div class="info-box">
+        <h4>分享链接</h4>
+        <div class="share-link-row">
+          <a id="shareLink" target="_blank" rel="noopener"></a>
+          <button class="copy-btn" id="copyBtn" type="button">复制</button>
+        </div>
+      </div>
+      <p class="hint">朋友连接后，可以点击"开始共享"。</p>
+      <div class="row">
+        <button class="btn btn-primary" id="startShareBtn" disabled>开始共享</button>
+        <button class="btn btn-secondary hidden" id="stopShareBtn">停止共享</button>
+      </div>
+    </div>
+
+    <!-- Viewer Waiting -->
+    <div class="panel hidden" id="viewerWaitingPanel">
+      <div class="panel-title">正在连接</div>
+      <p class="panel-hint">等待主机开始共享屏幕...</p>
+      <button class="btn btn-secondary hidden" id="reconnectBtn">重新连接</button>
+    </div>
+
+    <!-- Viewer Stream -->
+    <div class="panel hidden" id="viewerStreamPanel">
+      <div class="panel-title">共享画面</div>
+      <div class="video-area">
+        <video id="remoteVideo" autoplay playsinline></video>
+      </div>
+    </div>
+  </div>
+
+  <!-- PeerJS via CDN. Loaded synchronously so window.Peer is available
+       before our app code runs. -->
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
+  <script>// Auto-generated bundle. Do not edit by hand.
+var __app, __constraints, __peer_flow, __room_id, __state_machine, __ui_controller, __url;
+// --- constraints.js ---
+(function() {
+__constraints = {};
+// Media constraints builders for getDisplayMedia().
+// Video: 1080p @ 30fps target (browser falls back gracefully if hardware
+// can't deliver).
+// Audio: all processing flags OFF, since we capture system audio, not a mic.
+
+function buildVideoConstraints() {
+  return {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30 },
+  };
+}
+
+function buildAudioConstraints() {
+  return {
+    echoCancellation: false,
+    noiseSuppression: false,
+    autoGainControl: false,
+    sampleRate: { ideal: 48000 },
+    channelCount: { ideal: 2 },
+  };
+}
+
+function buildDisplayMediaConstraints() {
+  return {
+    video: buildVideoConstraints(),
+    audio: buildAudioConstraints(),
+  };
+}
+
+  __constraints.buildVideoConstraints = buildVideoConstraints;
+  __constraints.buildAudioConstraints = buildAudioConstraints;
+  __constraints.buildDisplayMediaConstraints = buildDisplayMediaConstraints;
+})();
+// --- peer-flow.js ---
+(function() {
+__peer_flow = {};
+// PeerJS wrapper for the host and viewer sides of a screenshare session.
+//
+// In the browser, PeerJS is loaded via <script> and exposed as a global
+// (`globalThis.Peer`). In tests we inject a mock by assigning
+// `globalThis.Peer = MockPeer` before calling these functions.
+//
+// We use PeerJS's MediaConnection ("call") to negotiate the WebRTC session.
+// PeerJS supports `peer.call(remoteId, null)` to mean "I have no local stream
+// to send; please send me one" — the receiver registers a 'stream' listener
+// on the returned MediaConnection and the remote side calls `.answer(stream)`
+// on its incoming MediaConnection to deliver its local stream.
+
+function requirePeer() {
+  if (typeof globalThis.Peer !== 'function') {
+    throw new Error(
+      'PeerJS is not loaded. In the browser it comes from <script src="...peerjs.min.js">; in tests set globalThis.Peer.'
+    );
+  }
+  return globalThis.Peer;
+}
+
+// ---- Host ------------------------------------------------------------------
+//
+// Registers a Peer with id === roomId, then waits for a viewer to dial:
+//   - peer.on('connection')  → viewer opened a data channel to us
+//   - peer.on('call')        → viewer wants our screen stream
+//
+// In PeerJS, when the viewer does `peer.call(hostId, null)`, the host receives
+// the SAME MediaConnection via `peer.on('call', mc)`. To deliver our local
+// stream back, we call `mc.answer(localStream)` on that stored connection —
+// NOT a fresh `peer.call(viewerId, stream)`. A fresh call would create a
+// second, unrelated MediaConnection that the viewer's `on('stream')`
+// listener (attached to its outgoing call) would never receive.
+//
+// The 'connection' and 'call' events may arrive in either order. We buffer
+// whichever arrives first and only fire onViewerConnected + wire up
+// onViewerDisconnected / onError once BOTH are present.
+function createHost({ roomId, callbacks }) {
+  const Peer = requirePeer();
+  const peer = new Peer(roomId);
+
+  let viewerId = null;
+  let dataConnection = null;
+  let mediaConnection = null;
+
+  function tryFireViewerConnected() {
+    if (!dataConnection || !mediaConnection) return;
+    viewerId = dataConnection.peer || dataConnection.remoteId;
+    if (callbacks.onViewerDisconnected) {
+      dataConnection.on('close', () => callbacks.onViewerDisconnected());
+    }
+    callbacks.onViewerConnected?.(mediaConnection);
+  }
+
+  peer.on('connection', (conn) => {
+    dataConnection = conn;
+    if (callbacks.onError) {
+      conn.on('error', (err) => callbacks.onError(err));
+    }
+    tryFireViewerConnected();
+  });
+
+  peer.on('call', (mc) => {
+    mediaConnection = mc;
+    if (callbacks.onError) {
+      mc.on('error', (err) => callbacks.onError(err));
+    }
+    // The viewer dialed us to request our stream. We answer only when
+    // addLocalStream is called (host hasn't picked a source yet). For now
+    // we register a 'stream' listener defensively — the viewer sends no
+    // media, so this should never fire, but it keeps the API uniform.
+    mc.on('stream', (remoteStream) => {
+      callbacks.onRemoteStream?.(remoteStream);
+    });
+    tryFireViewerConnected();
+  });
+
+  if (callbacks.onError) {
+    peer.on('error', (err) => callbacks.onError(err));
+  }
+
+  return {
+    peer,
+    addLocalStream(localStream) {
+      if (!mediaConnection) {
+        throw new Error('No viewer has requested the stream yet.');
+      }
+      // Answer the viewer's existing MediaConnection with our local stream.
+      mediaConnection.answer(localStream);
+      return mediaConnection;
+    },
+    close() {
+      try {
+        dataConnection?.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        mediaConnection?.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        peer.destroy();
+      } catch {
+        /* ignore */
+      }
+    },
+  };
+}
+
+// ---- Viewer ----------------------------------------------------------------
+//
+// Creates a Peer (broker assigns an id), then simultaneously:
+//   - opens a data connection to the host
+//   - calls the host with null media to request its screen stream
+//
+// When the host answers, the resulting MediaConnection emits 'stream' with
+// the host's local MediaStream.
+function connectAsViewer({ hostId, callbacks }) {
+  const Peer = requirePeer();
+  const peer = new Peer();
+
+  // Open the data channel.
+  const connection = peer.connect(hostId);
+
+  connection.on('open', () => {
+    callbacks.onConnected?.();
+  });
+  connection.on('close', () => {
+    callbacks.onDisconnected?.();
+  });
+  connection.on('data', () => {
+    // No data-channel protocol in v1.
+  });
+  if (callbacks.onError) {
+    connection.on('error', (err) => callbacks.onError(err));
+  }
+
+  // Request the host's stream.
+  const mediaCall = peer.call(hostId, null);
+  mediaCall.on('stream', (remoteStream) => {
+    callbacks.onRemoteStream?.(remoteStream);
+  });
+  mediaCall.on('close', () => {
+    // Don't double-fire: the data channel's close is the source of truth.
+  });
+  if (callbacks.onError) {
+    mediaCall.on('error', (err) => callbacks.onError(err));
+  }
+
+  if (callbacks.onError) {
+    peer.on('error', (err) => callbacks.onError(err));
+  }
+
+  return {
+    connection,
+    close() {
+      try {
+        connection.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        mediaCall.close();
+      } catch {
+        /* ignore */
+      }
+      try {
+        peer.destroy();
+      } catch {
+        /* ignore */
+      }
+    },
+  };
+}
+
+  __peer_flow.createHost = createHost;
+  __peer_flow.connectAsViewer = connectAsViewer;
+})();
+// --- room-id.js ---
+(function() {
+__room_id = {};
+// Room ID generation and parsing.
+// IDs are 12 alphanumeric chars (62-char alphabet), displayed as 4-4-4 hyphenated.
+// Total space: 62^12 ≈ 3e21, effectively unguessable. We use modulo for mapping
+// bytes to alphabet, which has a slight bias (~3% extra probability for the
+// first 8 alphabet entries) but with 62^12 / 256^12 ≈ 67 bits of effective
+// entropy this is well above "unguessable" for a private tool.
+
+const ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+const SEGMENT_LEN = 4;
+const SEGMENT_COUNT = 3;
+
+function randomSegment(bytesNeeded) {
+  const bytes = new Uint8Array(bytesNeeded);
+  globalThis.crypto.getRandomValues(bytes);
+  let out = '';
+  for (let i = 0; i < SEGMENT_LEN; i++) {
+    out += ALPHABET[bytes[i] % ALPHABET.length];
+  }
+  return out;
+}
+
+function generateRoomId() {
+  const segments = [];
+  for (let i = 0; i < SEGMENT_COUNT; i++) {
+    segments.push(randomSegment(SEGMENT_LEN));
+  }
+  return segments.join('-');
+}
+
+const ROOM_ID_REGEX = /^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/;
+
+function parseRoomId(input) {
+  if (typeof input !== 'string') {
+    return { valid: false, error: 'Room ID must be a string' };
+  }
+  const trimmed = input.trim();
+  if (trimmed.length === 0) {
+    return { valid: false, error: 'Room ID is empty' };
+  }
+  if (!ROOM_ID_REGEX.test(trimmed)) {
+    return { valid: false, error: 'Room ID must be 4-4-4 alphanumeric characters' };
+  }
+  return { valid: true, id: trimmed.toLowerCase().replace(/-/g, '') };
+}
+
+  __room_id.generateRoomId = generateRoomId;
+  __room_id.parseRoomId = parseRoomId;
+})();
+// --- state-machine.js ---
+(function() {
+__state_machine = {};
+// Connection state machine for screenshare-p2p.
+//
+// States:
+//   idle                  — no role yet
+//   hosting-waiting       — host created room, waiting for viewer
+//   hosting-connected     — viewer joined, host not yet sharing
+//   hosting-sharing       — host actively sharing screen
+//   viewer-connecting     — viewer dialing host
+//   viewer-connected      — viewer connected, waiting for stream
+//   viewer-streaming      — viewer receiving stream
+//   error                 — recoverable error
+//   closed                — terminal, connection ended
+//
+// All transitions are listed explicitly. An unknown event from a given state
+// is a no-op and returns false.
+
+const STATES = {
+  IDLE: 'idle',
+  HOSTING_WAITING: 'hosting-waiting',
+  HOSTING_CONNECTED: 'hosting-connected',
+  HOSTING_SHARING: 'hosting-sharing',
+  VIEWER_CONNECTING: 'viewer-connecting',
+  VIEWER_CONNECTED: 'viewer-connected',
+  VIEWER_STREAMING: 'viewer-streaming',
+  ERROR: 'error',
+  CLOSED: 'closed',
+};
+
+const TRANSITIONS = {
+  [STATES.IDLE]: {
+    'create-room': STATES.HOSTING_WAITING,
+    'join-room': STATES.VIEWER_CONNECTING,
+    'error': STATES.ERROR,
+  },
+  [STATES.HOSTING_WAITING]: {
+    'viewer-joined': STATES.HOSTING_CONNECTED,
+    'disconnect': STATES.IDLE,
+    'error': STATES.ERROR,
+  },
+  [STATES.HOSTING_CONNECTED]: {
+    'start-sharing': STATES.HOSTING_SHARING,
+    'disconnect': STATES.CLOSED,
+    'error': STATES.ERROR,
+  },
+  [STATES.HOSTING_SHARING]: {
+    'stop-sharing': STATES.HOSTING_CONNECTED,
+    'disconnect': STATES.CLOSED,
+    'error': STATES.ERROR,
+  },
+  [STATES.VIEWER_CONNECTING]: {
+    'viewer-connected-event': STATES.VIEWER_CONNECTED,
+    'disconnect': STATES.CLOSED,
+    'error': STATES.ERROR,
+  },
+  [STATES.VIEWER_CONNECTED]: {
+    'stream-received': STATES.VIEWER_STREAMING,
+    'disconnect': STATES.CLOSED,
+    'error': STATES.ERROR,
+  },
+  [STATES.VIEWER_STREAMING]: {
+    'stream-ended': STATES.VIEWER_CONNECTED,
+    'disconnect': STATES.CLOSED,
+    'error': STATES.ERROR,
+  },
+  [STATES.ERROR]: {
+    // Terminal-ish: nothing transitions out, but we keep it non-stuck
+    // for explicit reset by replacing the state machine.
+  },
+  [STATES.CLOSED]: {
+    // Terminal.
+  },
+};
+
+function createStateMachine() {
+  return {
+    state: STATES.IDLE,
+    transition(event) {
+      const table = TRANSITIONS[this.state];
+      if (!table) return false;
+      const next = table[event];
+      if (!next) return false;
+      this.state = next;
+      return true;
+    },
+  };
+}
+
+function canStartSharing(state) {
+  return state === STATES.HOSTING_CONNECTED;
+}
+
+function canReceiveStream(state) {
+  return state === STATES.VIEWER_CONNECTED;
+}
+
+function isHost(state) {
+  return typeof state === 'string' && state.startsWith('hosting-');
+}
+
+function isViewer(state) {
+  return typeof state === 'string' && state.startsWith('viewer-');
+}
+
+function isTerminal(state) {
+  return state === STATES.CLOSED || state === STATES.ERROR;
+}
+
+function isConnected(state) {
+  return (
+    state === STATES.HOSTING_CONNECTED ||
+    state === STATES.HOSTING_SHARING ||
+    state === STATES.VIEWER_CONNECTED ||
+    state === STATES.VIEWER_STREAMING
+  );
+}
+
+// Re-export state constants for downstream modules.
+
+
+  __state_machine.createStateMachine = createStateMachine;
+  __state_machine.canStartSharing = canStartSharing;
+  __state_machine.canReceiveStream = canReceiveStream;
+  __state_machine.isHost = isHost;
+  __state_machine.isViewer = isViewer;
+  __state_machine.isTerminal = isTerminal;
+  __state_machine.isConnected = isConnected;
+})();
+// --- ui-controller.js ---
+(function() {
+__ui_controller = {};
+// UI controller — bridges DOM events to the app's state machine and exposes
+// a small imperative API to update the DOM in response to state changes.
+//
+// We deliberately do NOT use event delegation: every button we care about
+// gets a direct listener that we keep references to so destroy() can
+// remove them.
+//
+// Panel visibility uses a `.hidden` utility class (CSS rule: display: none).
+
+const PANEL_IDS = {
+  landing: 'landingPanel',
+  'host-lobby': 'hostLobbyPanel',
+  'viewer-waiting': 'viewerWaitingPanel',
+  'viewer-stream': 'viewerStreamPanel',
+};
+
+const ALL_PANELS = Object.values(PANEL_IDS);
+
+function initUI({ stateMachine, callbacks }) {
+  // Cache element references up front; missing elements are an HTML bug.
+  const $ = (id) => {
+    const el = document.getElementById(id);
+    if (!el) {
+      throw new Error(`ui-controller: missing element #${id}`);
+    }
+    return el;
+  };
+
+  const els = {
+    statusText: $('statusText'),
+    statusDot: $('statusDot'),
+    errorToast: $('errorToast'),
+    shareLink: $('shareLink'),
+    remoteVideo: $('remoteVideo'),
+    createBtn: $('createBtn'),
+    joinBtn: $('joinBtn'),
+    copyBtn: $('copyBtn'),
+    startShareBtn: $('startShareBtn'),
+    stopShareBtn: $('stopShareBtn'),
+    reconnectBtn: $('reconnectBtn'),
+  };
+
+  // Keep the current share link so the copy button can pass it to the
+  // app's copy handler (which may want to update the clipboard directly).
+  let currentShareLink = '';
+
+  // --- Click handlers (kept as refs so we can remove them on destroy) -----
+  const handlers = [];
+
+  function on(el, event, fn) {
+    el.addEventListener(event, fn);
+    handlers.push(() => el.removeEventListener(event, fn));
+  }
+
+  on(els.createBtn, 'click', () => {
+    stateMachine.transition('create-room');
+    callbacks.onCreateRoom?.();
+  });
+
+  on(els.joinBtn, 'click', () => {
+    // Viewer flow is wired in app.js; the button is a no-op stub here.
+    callbacks.onJoinRoom?.();
+  });
+
+  on(els.startShareBtn, 'click', () => {
+    stateMachine.transition('start-sharing');
+    callbacks.onStartSharing?.();
+  });
+
+  on(els.stopShareBtn, 'click', () => {
+    stateMachine.transition('stop-sharing');
+    callbacks.onStopSharing?.();
+  });
+
+  on(els.copyBtn, 'click', () => {
+    callbacks.onCopyLink?.(currentShareLink);
+  });
+
+  on(els.reconnectBtn, 'click', () => {
+    callbacks.onReconnect?.();
+  });
+
+  // --- Public controller API ----------------------------------------------
+
+  return {
+    setStatus(text, type) {
+      els.statusText.textContent = text;
+      // Reset the dot's color classes while keeping the base 'status-dot'
+      // class (otherwise the dot loses its size/shape and collapses).
+      const COLOR_CLASSES = ['connected', 'waiting', 'error'];
+      els.statusDot.classList.remove(...COLOR_CLASSES);
+      if (type) {
+        els.statusDot.classList.add(type);
+      }
+    },
+
+    showPanel(panel) {
+      const targetId = PANEL_IDS[panel];
+      if (!targetId) {
+        throw new Error(`ui-controller: unknown panel "${panel}"`);
+      }
+      for (const id of ALL_PANELS) {
+        const el = document.getElementById(id);
+        if (!el) continue;
+        if (id === targetId) {
+          el.classList.remove('hidden');
+        } else {
+          el.classList.add('hidden');
+        }
+      }
+    },
+
+    setShareLink(url) {
+      currentShareLink = url;
+      els.shareLink.textContent = url;
+      // Also set href so middle-click / drag works in the host lobby.
+      els.shareLink.setAttribute('href', url);
+    },
+
+    setRemoteStream(stream) {
+      els.remoteVideo.srcObject = stream;
+    },
+
+    showError(msg) {
+      els.errorToast.textContent = msg;
+      els.errorToast.classList.remove('hidden');
+    },
+
+    getState() {
+      return stateMachine.state;
+    },
+
+    destroy() {
+      for (const off of handlers) {
+        try {
+          off();
+        } catch {
+          /* ignore */
+        }
+      }
+      handlers.length = 0;
+    },
+  };
+}
+
+  __ui_controller.initUI = initUI;
+})();
+// --- url.js ---
+(function() {
+__url = {};
+// URL hash parser and share URL builder.
+// The hash is the natural place for the room ID: it isn't sent to any server,
+// works with file://, and survives page reloads.
+
+const { parseRoomId } = __room_id;
+
+function normalizeHash(hash) {
+  if (typeof hash !== 'string') return null;
+  let h = hash.trim();
+  if (h.length === 0) return null;
+  if (h.startsWith('#')) h = h.slice(1);
+  if (h.trim().length === 0) return null;
+  return h;
+}
+
+function getRoomIdFromHash(hash) {
+  const stripped = normalizeHash(hash);
+  if (stripped === null) return null;
+  const parsed = parseRoomId(stripped);
+  return parsed.valid ? parsed.id : null;
+}
+
+function buildShareUrl(roomId, baseUrl) {
+  const base = baseUrl || (globalThis.location && globalThis.location.href) || '';
+  // Strip any trailing hash from the base URL so we always end with a single '#'.
+  const cleanBase = base.endsWith('#') ? base.slice(0, -1) : base;
+  return `${cleanBase}#${roomId}`;
+}
+
+  __url.getRoomIdFromHash = getRoomIdFromHash;
+  __url.buildShareUrl = buildShareUrl;
+})();
+// --- entry: app.js ---
+(function() {
+__app = {};
+// Entry point for the screenshare-p2p app.
+// Wires together: state machine, UI controller, room-id, url, peer-flow,
+// and constraints modules. Listens for DOMContentLoaded to bootstrap.
+//
+// Exports: nothing. Side effects only.
+
+const { createStateMachine, STATES } = __state_machine;
+const { initUI } = __ui_controller;
+const { generateRoomId } = __room_id;
+const { getRoomIdFromHash, buildShareUrl } = __url;
+const { createHost, connectAsViewer } = __peer_flow;
+const { buildDisplayMediaConstraints } = __constraints;
+
+const COPY_BUTTON_FLASH_MS = 1500;
+
+// Per-session state held by the app. The state machine is exposed for the
+// UI controller, and the host/viewer flow handles are kept for stop / close.
+let hostFlow = null;
+let localStream = null;
+
+function setHash(roomIdDisplay) {
+  // Use the hyphenated form for display, e.g. "Xxxx-Yyyy-Zzzz".
+  window.location.hash = `#${roomIdDisplay}`;
+}
+
+function baseUrlFromLocation() {
+  // Strip any hash so buildShareUrl can append a clean "#<id>".
+  return window.location.href.split('#')[0];
+}
+
+// --- Stop sharing (host) ---------------------------------------------------
+//
+// Stops all tracks on the local stream, clears the video element, and
+// restores the UI to the "viewer connected, ready to share" state.
+
+function stopSharing(ui) {
+  if (localStream) {
+    try {
+      localStream.getTracks().forEach((t) => t.stop());
+    } catch {
+      /* ignore */
+    }
+    localStream = null;
+  }
+  const video = document.getElementById('remoteVideo');
+  if (video) video.srcObject = null;
+
+  const startBtn = document.getElementById('startShareBtn');
+  const stopBtn = document.getElementById('stopShareBtn');
+  if (startBtn) startBtn.classList.add('hidden');
+  if (stopBtn) stopBtn.classList.add('hidden');
+
+  // v1 limitation: PeerJS MediaConnection.answer() is single-use. Restarting
+  // a share would require tearing down the host peer and forcing the viewer
+  // to reconnect. Surface a clear next-step to the user instead of silently
+  // re-enabling a button that would fail.
+  ui.showError('共享已停止。如需再次共享，请重新创建房间。');
+}
+
+// --- Start sharing (host) --------------------------------------------------
+//
+// Captures the screen via getDisplayMedia, shows a local preview in the
+// video element, and pipes the stream through the host flow.
+
+async function startSharing(ui) {
+  const startBtn = document.getElementById('startShareBtn');
+  const stopBtn = document.getElementById('stopShareBtn');
+
+  if (startBtn) startBtn.disabled = true;
+
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia(
+      buildDisplayMediaConstraints()
+    );
+  } catch (err) {
+    if (err && err.name !== 'AbortError') {
+      ui.showError('无法捕获屏幕: ' + err.message);
+    }
+    if (startBtn) startBtn.disabled = false;
+    return;
+  }
+
+  localStream = stream;
+
+  // Reuse the same <video> element for self-preview on the host.
+  ui.setRemoteStream(stream);
+  try {
+    const video = document.getElementById('remoteVideo');
+    if (video && typeof video.play === 'function') {
+      const p = video.play();
+      if (p && typeof p.catch === 'function') {
+        p.catch(() => {
+          /* autoplay may be blocked; the local preview will still attach */
+        });
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+
+  // Hand the stream to the host flow (it answers the viewer's MediaConnection).
+  try {
+    hostFlow?.addLocalStream(stream);
+  } catch (err) {
+    ui.showError('共享失败: ' + err.message);
+    stopSharing(ui);
+    return;
+  }
+
+  // Wire up the browser's "Stop sharing" affordance: when a track ends
+  // (e.g. user clicked the browser's stop button), tear down our state too.
+  stream.getTracks().forEach((track) => {
+    track.onended = () => {
+      stopSharing(ui);
+    };
+  });
+
+  // Flip the UI: "Start" becomes "Stop".
+  if (startBtn) startBtn.classList.add('hidden');
+  if (stopBtn) stopBtn.classList.remove('hidden');
+  ui.setStatus('共享中', 'connected');
+}
+
+// --- Host flow -------------------------------------------------------------
+
+function hostStart(ui, stateMachine) {
+  // Tear down any previous host peer so re-entering doesn't leak it.
+  hostFlow?.close();
+  hostFlow = null;
+  localStream = null;
+
+  // Generate a room id, set the hash, and create the host peer.
+  const roomId = generateRoomId();
+  setHash(roomId);
+
+  const shareUrl = buildShareUrl(roomId, baseUrlFromLocation());
+  ui.setShareLink(shareUrl);
+  ui.showPanel('host-lobby');
+  ui.setStatus('等待观众加入...', 'waiting');
+
+  // Reset the start/stop button states in case we're re-using the lobby.
+  const startBtn = document.getElementById('startShareBtn');
+  const stopBtn = document.getElementById('stopShareBtn');
+  if (startBtn) {
+    startBtn.disabled = true;
+    startBtn.classList.remove('hidden');
+  }
+  if (stopBtn) stopBtn.classList.add('hidden');
+
+  let host;
+  try {
+    host = createHost({
+      roomId,
+      callbacks: {
+        onViewerConnected() {
+          stateMachine.transition('viewer-joined');
+          ui.setStatus('观众已连接，准备共享', 'connected');
+          const btn = document.getElementById('startShareBtn');
+          if (btn) btn.disabled = false;
+        },
+        onViewerDisconnected() {
+          stateMachine.transition('disconnect');
+          ui.setStatus('观众已离开', '');
+          const btn = document.getElementById('startShareBtn');
+          if (btn) btn.disabled = true;
+          // Also stop any active share, since the viewer is gone.
+          if (localStream) stopSharing(ui);
+        },
+        onRemoteStream() {
+          // Not used in v1 — host only sends, never receives.
+        },
+        onError(err) {
+          stateMachine.transition('error');
+          ui.showError('信令错误: ' + (err?.message || String(err)));
+        },
+      },
+    });
+  } catch (err) {
+    ui.showError(err.message || String(err));
+    return;
+  }
+
+  hostFlow = host;
+}
+
+// --- Viewer flow -----------------------------------------------------------
+
+function viewerStart(ui, stateMachine, hostId) {
+  ui.showPanel('viewer-waiting');
+  ui.setStatus('正在连接...', 'waiting');
+  stateMachine.transition('join-room');
+
+  let viewer;
+  try {
+    viewer = connectAsViewer({
+      hostId,
+      callbacks: {
+        onConnected() {
+          stateMachine.transition('viewer-connected-event');
+          ui.setStatus('已连接，等待共享...', 'connected');
+        },
+        onRemoteStream(stream) {
+          stateMachine.transition('stream-received');
+          ui.setRemoteStream(stream);
+          ui.showPanel('viewer-stream');
+          ui.setStatus('正在接收共享', 'connected');
+          const video = document.getElementById('remoteVideo');
+          if (video && typeof video.play === 'function') {
+            const p = video.play();
+            if (p && typeof p.catch === 'function') {
+              p.catch(() => {
+                /* autoplay may be blocked; the user can click play */
+              });
+            }
+          }
+        },
+        onDisconnected() {
+          stateMachine.transition('disconnect');
+          ui.setStatus('连接已断开', '');
+          ui.showError('与主机的连接已断开');
+          // Switch back to the waiting panel so the reconnect button
+          // (which lives inside viewerWaitingPanel) is reachable.
+          ui.showPanel('viewer-waiting');
+          const reconnect = document.getElementById('reconnectBtn');
+          if (reconnect) reconnect.classList.remove('hidden');
+        },
+        onError(err) {
+          stateMachine.transition('error');
+          ui.showError('连接错误: ' + (err?.message || String(err)));
+        },
+      },
+    });
+  } catch (err) {
+    ui.showError(err.message || String(err));
+    return;
+  }
+
+  // Stash the viewer handle so the page could close it on unload in the future.
+  ui._viewerFlow = viewer;
+}
+
+// --- Copy link -------------------------------------------------------------
+
+async function copyLink(ui, url) {
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+  } catch (err) {
+    // The host may not have clipboard permission (e.g. served from file://
+    // in some browsers). Log and move on — the user can still copy manually.
+    console.error('clipboard write failed:', err);
+    return;
+  }
+  const btn = document.getElementById('copyBtn');
+  if (!btn) return;
+  const original = btn.textContent;
+  btn.textContent = '已复制!';
+  setTimeout(() => {
+    btn.textContent = original;
+  }, COPY_BUTTON_FLASH_MS);
+}
+
+// --- Bootstrap -------------------------------------------------------------
+
+function bootstrap() {
+  const stateMachine = createStateMachine();
+
+  const ui = initUI({
+    stateMachine,
+    callbacks: {
+      onCreateRoom: () => hostStart(ui, stateMachine),
+      onJoinRoom: () => {
+        // v1: simple prompt. Reload with the new hash so bootstrap runs and
+        // the viewer flow starts cleanly. (Hash-only mutation does not re-run
+        // bootstrap and would leave the user on the landing panel.)
+        const entered = window.prompt('请输入房间号（例如 Xxxx-Yyyy-Zzzz）：');
+        if (entered && entered.trim().length > 0) {
+          window.location.hash = `#${entered.trim()}`;
+          window.location.reload();
+        }
+      },
+      onStartSharing: () => {
+        startSharing(ui).catch((err) => {
+          ui.showError('共享失败: ' + (err?.message || String(err)));
+        });
+      },
+      onStopSharing: () => stopSharing(ui),
+      onCopyLink: (url) => copyLink(ui, url),
+      onReconnect: () => window.location.reload(),
+    },
+  });
+
+  // Initial routing: hash with a valid room id -> viewer flow; else -> landing.
+  const initial = getRoomIdFromHash(window.location.hash);
+  if (initial) {
+    viewerStart(ui, stateMachine, initial);
+  } else {
+    ui.showPanel('landing');
+    ui.setStatus('未连接', '');
+    // If the hash was set but didn't parse as a room id, surface that.
+    if (
+      typeof window.location.hash === 'string' &&
+      window.location.hash.length > 1
+    ) {
+      ui.showError('房间号格式无效，应为 Xxxx-Yyyy-Zzzz 形式');
+    }
+  }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootstrap);
+} else {
+  // DOM is already parsed (e.g. when the script runs after parse in tests).
+  bootstrap();
+}
+
+
+})();
+</script>
+</body>
+</html>
