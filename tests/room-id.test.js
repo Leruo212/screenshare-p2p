@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { generateRoomId, parseRoomId } from '../src/room-id.js';
+import { generateRoomId, parseRoomId, normalizeRoomId } from '../src/room-id.js';
 
 const ROOM_ID_REGEX = /^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/;
 
@@ -95,6 +95,41 @@ describe('parseRoomId', () => {
       const generated = generateRoomId();
       const parsed = parseRoomId(generated);
       expect(parsed.valid).toBe(true);
+    }
+  });
+});
+
+describe('normalizeRoomId', () => {
+  it('strips dashes', () => {
+    expect(normalizeRoomId('abcd-1234-efgh')).toBe('abcd1234efgh');
+  });
+
+  it('lowercases', () => {
+    expect(normalizeRoomId('ABCD-1234-EFGH')).toBe('abcd1234efgh');
+    expect(normalizeRoomId('AbCd-1234-eFgH')).toBe('abcd1234efgh');
+  });
+
+  it('handles already-normalized input', () => {
+    expect(normalizeRoomId('abcd1234efgh')).toBe('abcd1234efgh');
+  });
+
+  it('returns empty string for non-string input', () => {
+    expect(normalizeRoomId(null)).toBe('');
+    expect(normalizeRoomId(undefined)).toBe('');
+    expect(normalizeRoomId(123)).toBe('');
+  });
+
+  it('host and viewer agree on the canonical ID (regression for cross-broker case mismatch)', () => {
+    // The host generates a display-form ID like "9dZp-qla8-8Uxi" and registers
+    // a peer with PeerJS. The viewer parses the URL and gets a normalized ID
+    // (lowercase, no dashes). If the host doesn't normalize, the broker will
+    // not be able to match them and the call fails with "Could not connect".
+    for (let i = 0; i < 50; i++) {
+      const display = generateRoomId();
+      const hostId = normalizeRoomId(display);
+      // Simulate a viewer pasting the same display string into the parser.
+      const viewerId = parseRoomId(display).id;
+      expect(hostId).toBe(viewerId);
     }
   });
 });
