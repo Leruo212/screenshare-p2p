@@ -1,12 +1,28 @@
 // Media constraints builders for getDisplayMedia().
-// Video: 1080p @ 30fps target (browser falls back gracefully if hardware
-// can't deliver).
-// Audio: all processing flags OFF, since we capture system audio, not a mic.
+//
+// Quality presets are a UX shortcut: the user picks a label (e.g. "1080p") and
+// we translate it to a constraint that asks the browser to hit a target
+// resolution. The browser may downgrade if the user's display or hardware
+// can't deliver the target.
 
-export function buildVideoConstraints() {
+const QUALITY_PRESETS = {
+  '720p': { width: { ideal: 1280 }, height: { ideal: 720 } },
+  '1080p': { width: { ideal: 1920 }, height: { ideal: 1080 } },
+  '1440p': { width: { ideal: 2560 }, height: { ideal: 1440 } },
+  source: {}, // No resolution cap — let the source dictate.
+};
+
+export const QUALITY_OPTIONS = [
+  { value: '720p', label: '720p（标清，省带宽）' },
+  { value: '1080p', label: '1080p（高清，推荐）' },
+  { value: '1440p', label: '1440p（2K）' },
+  { value: 'source', label: '原始（不缩放）' },
+];
+
+export function buildVideoConstraints(quality = '1080p') {
+  const preset = QUALITY_PRESETS[quality] ?? QUALITY_PRESETS['1080p'];
   return {
-    width: { ideal: 1920 },
-    height: { ideal: 1080 },
+    ...preset,
     frameRate: { ideal: 30 },
   };
 }
@@ -21,9 +37,9 @@ export function buildAudioConstraints() {
   };
 }
 
-export function buildDisplayMediaConstraints() {
+export function buildDisplayMediaConstraints(quality = '1080p') {
   return {
-    video: buildVideoConstraints(),
+    video: buildVideoConstraints(quality),
     audio: buildAudioConstraints(),
   };
 }

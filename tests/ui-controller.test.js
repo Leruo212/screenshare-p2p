@@ -20,6 +20,12 @@ function buildDOM() {
     <section id="hostLobbyPanel" class="panel hidden">
       <a id="shareLink" href="#"></a>
       <button id="copyBtn">Copy</button>
+      <select id="qualitySelect">
+        <option value="720p">720p</option>
+        <option value="1080p" selected>1080p</option>
+        <option value="1440p">1440p</option>
+        <option value="source">source</option>
+      </select>
       <button id="startShareBtn">Start</button>
       <button id="stopShareBtn">Stop</button>
     </section>
@@ -29,7 +35,10 @@ function buildDOM() {
     </section>
 
     <section id="viewerStreamPanel" class="panel hidden">
-      <video id="remoteVideo"></video>
+      <div id="videoArea">
+        <video id="remoteVideo"></video>
+        <button id="fullscreenBtn">Fullscreen</button>
+      </div>
     </section>
 
     <div id="errorToast" class="hidden"></div>

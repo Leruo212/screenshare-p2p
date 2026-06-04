@@ -313,6 +313,7 @@ h1 {
 /* ---- Video area --------------------------------------------------------- */
 
 .video-area {
+  position: relative;
   width: 100%;
   background: #000;
   border-radius: var(--radius-sm);
@@ -330,6 +331,104 @@ h1 {
   object-fit: contain;
   display: block;
   background: #000;
+}
+
+.video-area:fullscreen,
+.video-area:-webkit-full-screen {
+  border: none;
+  border-radius: 0;
+}
+
+.video-area:fullscreen video,
+.video-area:-webkit-full-screen video {
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+}
+
+.fullscreen-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+}
+
+.fullscreen-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.05);
+}
+
+.fullscreen-btn:active {
+  transform: scale(0.95);
+}
+
+.viewer-hint {
+  position: absolute;
+  bottom: 8px;
+  left: 12px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  pointer-events: none;
+  user-select: none;
+  z-index: 1;
+}
+
+.video-area:fullscreen .viewer-hint,
+.video-area:-webkit-full-screen .viewer-hint {
+  bottom: 16px;
+  left: 16px;
+  font-size: 14px;
+}
+
+/* ---- Quality selector (host lobby) -------------------------------------- */
+
+.quality-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 16px 0 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.quality-select {
+  flex: 1;
+  padding: 8px 12px;
+  background: var(--bg-elev);
+  color: var(--text-primary);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.quality-select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(233, 69, 96, 0.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fullscreen-btn {
+    transition: none;
+  }
+  .fullscreen-btn:hover,
+  .fullscreen-btn:active {
+    transform: none;
+  }
 }
 
 /* ---- Visibility utility ------------------------------------------------- */
