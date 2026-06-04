@@ -412,7 +412,7 @@ h1 {
     <div class="panel hidden" id="viewerStreamPanel">
       <div class="panel-title">共享画面</div>
       <div class="video-area">
-        <video id="remoteVideo" autoplay playsinline></video>
+        <video id="remoteVideo" autoplay playsinline muted></video>
       </div>
     </div>
   </div>
@@ -529,11 +529,15 @@ function createHost({ roomId, callbacks }) {
 
   function pushStreamToViewer() {
     if (!viewerId || !localStream) return;
+    console.log('[host] pushing stream to viewer', viewerId, 'tracks:', localStream.getTracks().map((t) => t.kind));
     // The viewer listens for `peer.on('call', mc)` and reads `mc.on('stream')`,
     // so this call surfaces the screen stream on the viewer side.
     const call = peer.call(viewerId, localStream);
     if (call) {
-      if (callbacks.onError) call.on('error', (err) => callbacks.onError(err));
+      if (callbacks.onError) call.on('error', (err) => {
+        console.error('[host] outgoing call error:', err);
+        callbacks.onError(err);
+      });
     } else if (callbacks.onError) {
       // Should not happen — we have a valid localStream. Surface defensively.
       callbacks.onError(
@@ -606,23 +610,29 @@ function connectAsViewer({ hostId, callbacks }) {
 
     // Listen for the host to call us with the screen stream.
     peer.on('call', (mc) => {
+      console.log('[viewer] incoming call from host, answering');
       incomingCall = mc;
       if (callbacks.onError) {
-        mc.on('error', (err) => callbacks.onError(err));
+        mc.on('error', (err) => {
+          console.error('[viewer] media call error:', err);
+          callbacks.onError(err);
+        });
       }
       mc.on('stream', (remoteStream) => {
+        console.log('[viewer] got remote stream, tracks:', remoteStream.getTracks().map((t) => t.kind));
         callbacks.onRemoteStream?.(remoteStream);
       });
       mc.on('close', () => {
         // Don't double-fire: the data channel's close is the source of truth.
       });
-      // Answer the call so WebRTC negotiation completes. We pass no stream
-      // because we have nothing to send back.
-      try {
-        mc.answer();
-      } catch (err) {
+      // mc.answer() is async. The promise may reject if WebRTC negotiation
+      // fails (e.g. ICE can't reach the host). We don't currently have an
+      // outgoing stream, but answer() with no argument is valid: the host's
+      // offer contains tracks, our answer is recvonly for those tracks.
+      Promise.resolve(mc.answer()).catch((err) => {
+        console.error('[viewer] mc.answer() rejected:', err);
         if (callbacks.onError) callbacks.onError(err);
-      }
+      });
     });
   }
 
@@ -1252,16 +1262,22 @@ function viewerStart(ui, stateMachine, hostId) {
           ui.setStatus('已连接，等待共享...', 'connected');
         },
         onRemoteStream(stream) {
+          console.log('[viewer] onRemoteStream fired, tracks:', stream.getTracks().map((t) => t.kind));
           stateMachine.transition('stream-received');
           ui.setRemoteStream(stream);
           ui.showPanel('viewer-stream');
           ui.setStatus('正在接收共享', 'connected');
           const video = document.getElementById('remoteVideo');
-          if (video && typeof video.play === 'function') {
+          if (!video) return;
+          // Mute the element regardless of the HTML attribute — some browsers
+          // still enforce autoplay policy if a stream has audio tracks.
+          // Users can unmute by right-clicking the video.
+          video.muted = true;
+          if (typeof video.play === 'function') {
             const p = video.play();
             if (p && typeof p.catch === 'function') {
-              p.catch(() => {
-                /* autoplay may be blocked; the user can click play */
+              p.catch((err) => {
+                console.warn('[viewer] video.play() rejected:', err && err.message);
               });
             }
           }
