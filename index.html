@@ -1,0 +1,712 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ScreenShare P2P</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    :root {
+      --bg-primary: #0f0f1a;
+      --bg-secondary: #1a1a2e;
+      --bg-card: #16213e;
+      --accent: #e94560;
+      --accent-hover: #ff6b6b;
+      --text-primary: #ffffff;
+      --text-secondary: #a0a0b0;
+      --border: #2a2a4a;
+      --success: #4ade80;
+    }
+
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 900px;
+      margin: 0 auto;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 32px;
+      font-weight: 700;
+      margin-bottom: 8px;
+      background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .subtitle {
+      text-align: center;
+      color: var(--text-secondary);
+      margin-bottom: 30px;
+      font-size: 14px;
+    }
+
+    .status-bar {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .status-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--text-secondary);
+    }
+
+    .status-dot.connected { background: var(--success); box-shadow: 0 0 10px var(--success); }
+    .status-dot.waiting { background: var(--accent); animation: pulse 1.5s infinite; }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+
+    .panel {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      margin-bottom: 20px;
+    }
+
+    .panel-title {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+
+    .btn {
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #e94560 0%, #ff6b6b 100%);
+      color: white;
+      box-shadow: 0 4px 20px rgba(233, 69, 96, 0.3);
+    }
+
+    .btn-primary:hover { transform: translateY(-2px); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-secondary {
+      background: var(--bg-card);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover { border-color: var(--accent); color: var(--accent); }
+
+    textarea {
+      width: 100%;
+      height: 100px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-primary);
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 12px;
+      padding: 12px;
+      resize: none;
+      margin-bottom: 12px;
+    }
+
+    textarea:focus { outline: none; border-color: var(--accent); }
+    textarea::placeholder { color: var(--text-secondary); }
+
+    .row { display: flex; gap: 12px; align-items: center; }
+    .row > * { flex: 1; }
+
+    .info-box {
+      background: var(--bg-card);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .info-box h4 {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .info-box pre {
+      font-family: 'SF Mono', Monaco, monospace;
+      font-size: 11px;
+      color: var(--accent);
+      word-break: break-all;
+      white-space: pre-wrap;
+      background: var(--bg-primary);
+      padding: 12px;
+      border-radius: 6px;
+      max-height: 120px;
+      overflow-y: auto;
+    }
+
+    .copy-btn {
+      padding: 8px 16px;
+      font-size: 13px;
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-top: 8px;
+    }
+
+    .copy-btn:hover { background: var(--accent-hover); }
+
+    .divider {
+      text-align: center;
+      color: var(--text-secondary);
+      font-size: 13px;
+      margin: 20px 0;
+      position: relative;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      position: absolute;
+      top: 50%;
+      width: 40%;
+      height: 1px;
+      background: var(--border);
+    }
+
+    .divider::before { left: 0; }
+    .divider::after { right: 0; }
+
+    .video-area {
+      background: var(--bg-card);
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      min-height: 400px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      overflow: hidden;
+    }
+
+    .video-area video {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+      border-radius: 8px;
+      display: none;
+    }
+
+    .video-area video.visible { display: block; }
+    .video-area.empty { border: 2px dashed var(--border); }
+
+    .placeholder-text { color: var(--text-secondary); font-size: 16px; }
+
+    .controls { display: flex; gap: 12px; justify-content: center; }
+
+    .error {
+      background: rgba(233, 69, 96, 0.1);
+      border: 1px solid var(--accent);
+      border-radius: 8px;
+      padding: 12px;
+      color: var(--accent);
+      font-size: 14px;
+      margin-bottom: 16px;
+    }
+
+    .hidden { display: none !important; }
+    .peer-count { font-size: 13px; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>ScreenShare P2P</h1>
+    <p class="subtitle">P2P直连 · 无需中转 · 复制粘贴即可连接</p>
+
+    <div class="status-bar">
+      <div class="status-label">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">未连接</span>
+      </div>
+      <span id="peerCount"></span>
+    </div>
+
+    <div class="error hidden" id="errorBox"></div>
+
+    <!-- Host Panel -->
+    <div class="panel" id="hostPanel">
+      <div class="panel-title">主机 - 创建房间</div>
+      <div class="info-box hidden" id="offerBox">
+        <h4>你的 Offer（复制发送给朋友）</h4>
+        <pre id="offerText"></pre>
+        <button class="copy-btn" onclick="copyText('offerText', this)">复制 Offer</button>
+      </div>
+      <div class="info-box hidden" id="answerBox">
+        <h4>朋友发来的 Answer（粘贴到这里）</h4>
+        <textarea id="answerInput" placeholder="粘贴朋友发来的 Answer..."></textarea>
+        <button class="btn btn-primary" onclick="hostAcceptAnswer()">完成连接</button>
+      </div>
+      <button class="btn btn-primary" id="createBtn" onclick="hostCreateRoom()">创建房间</button>
+    </div>
+
+    <div class="divider">或者</div>
+
+    <!-- Viewer Panel -->
+    <div class="panel" id="viewerPanel">
+      <div class="panel-title">观众 - 加入房间</div>
+      <div class="info-box hidden" id="viewerOfferBox">
+        <h4>主机发来的 Offer（粘贴到这里）</h4>
+        <textarea id="viewerOfferInput" placeholder="粘贴主机发来的 Offer..."></textarea>
+        <button class="btn btn-primary" onclick="viewerProcessOffer()">处理 Offer</button>
+      </div>
+      <div class="info-box hidden" id="answerFromViewerBox">
+        <h4>你的 Answer（复制发送给主机）</h4>
+        <pre id="viewerAnswerText"></pre>
+        <button class="copy-btn" onclick="copyText('viewerAnswerText', this)">复制 Answer</button>
+      </div>
+      <button class="btn btn-secondary" id="joinBtn" onclick="startJoin()">加入房间</button>
+    </div>
+
+    <!-- Video Area -->
+    <div class="video-area empty" id="videoArea">
+      <p class="placeholder-text" id="videoPlaceholder">等待连接...</p>
+      <video id="remoteVideo" autoplay playsInline></video>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls" id="controls">
+      <button class="btn btn-primary" id="shareBtn" onclick="startScreenShare()" disabled>共享屏幕</button>
+      <button class="btn btn-secondary hidden" id="stopBtn" onclick="stopScreenShare()">停止共享</button>
+    </div>
+  </div>
+
+<script>
+// ============ State ============
+const state = {
+  peer: null,
+  role: null,
+  localStream: null,
+  dataChannel: null,
+  pendingOffer: null,
+};
+
+// ============ UI Helpers ============
+const $ = id => document.getElementById(id);
+
+function setStatus(text, type = '') {
+  $('statusText').textContent = text;
+  $('statusDot').className = 'status-dot ' + type;
+}
+
+function showError(msg) {
+  const box = $('errorBox');
+  box.textContent = msg;
+  box.classList.remove('hidden');
+  setTimeout(() => box.classList.add('hidden'), 5000);
+}
+
+function copyText(id, btn) {
+  const text = $(id).textContent;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制!';
+    setTimeout(() => btn.textContent = '复制', 2000);
+  });
+}
+
+function showElement(id) { $(id).classList.remove('hidden'); }
+function hideElement(id) { $(id).classList.add('hidden'); }
+
+// ============ Host Functions ============
+async function hostCreateRoom() {
+  try {
+    $('createBtn').disabled = true;
+    state.role = 'host';
+
+    // Create peer connection
+    state.peer = createPeerConnection();
+
+    // Create data channel
+    const channel = state.peer.createDataChannel(' signaling');
+    setupDataChannel(channel);
+
+    // Create offer
+    const offer = await state.peer.createOffer();
+    await state.peer.setLocalDescription(offer);
+
+    // Wait for ICE
+    await waitForIce(state.peer);
+
+    $('offerBox').classList.remove('hidden');
+    $('offerText').textContent = JSON.stringify(state.peer.localDescription);
+    $('answerBox').classList.remove('hidden');
+    $('hostPanel').querySelector('.panel-title').textContent = '主机 - 等待连接...';
+    setStatus('等待观众加入...', 'waiting');
+
+  } catch (err) {
+    console.error('Create room error:', err);
+    showError('创建房间失败: ' + err.message);
+    $('createBtn').disabled = false;
+  }
+}
+
+async function hostAcceptAnswer() {
+  try {
+    const answerText = $('answerInput').value.trim();
+    if (!answerText) { showError('请粘贴 Answer'); return; }
+
+    const answer = JSON.parse(answerText);
+    await state.peer.setRemoteDescription(answer);
+
+    hideElement('offerBox');
+    hideElement('answerBox');
+    $('hostPanel').querySelector('.panel-title').textContent = '主机 - 已连接';
+    setStatus('已连接，等待共享屏幕', 'connected');
+    $('shareBtn').disabled = false;
+
+  } catch (err) {
+    console.error('Accept answer error:', err);
+    showError('Answer 格式错误: ' + err.message);
+  }
+}
+
+// ============ Viewer Functions ============
+function startJoin() {
+  showElement('viewerOfferBox');
+  $('joinBtn').disabled = true;
+}
+
+async function viewerProcessOffer() {
+  try {
+    const offerText = $('viewerOfferInput').value.trim();
+    if (!offerText) { showError('请粘贴 Offer'); return; }
+
+    const offer = JSON.parse(offerText);
+    state.role = 'viewer';
+
+    // Create peer connection
+    state.peer = createPeerConnection();
+
+    // Handle incoming data channel
+    state.peer.addEventListener('datachannel', e => {
+      setupDataChannel(e.channel);
+    });
+
+    await state.peer.setRemoteDescription(offer);
+
+    // Create answer
+    const answer = await state.peer.createAnswer();
+    await state.peer.setLocalDescription(answer);
+
+    // Wait for ICE
+    await waitForIce(state.peer);
+
+    hideElement('viewerOfferBox');
+    showElement('answerFromViewerBox');
+    $('viewerAnswerText').textContent = JSON.stringify(state.peer.localDescription);
+    setStatus('等待主机接受...', 'waiting');
+
+  } catch (err) {
+    console.error('Process offer error:', err);
+    showError('Offer 格式错误: ' + err.message);
+  }
+}
+
+// ============ Peer Connection ============
+function createPeerConnection() {
+  const pc = new RTCPeerConnection({
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+    ],
+  });
+
+  pc.addEventListener('icecandidate', e => {
+    if (e.candidate === null) {
+      console.log('ICE gathering complete');
+    }
+  });
+
+  pc.addEventListener('connectionstatechange', () => {
+    console.log('Connection state:', pc.connectionState);
+    if (pc.connectionState === 'connected') {
+      setStatus('已连接', 'connected');
+    } else if (pc.connectionState === 'failed') {
+      showError('连接失败，请重试');
+      setStatus('连接失败', '');
+    }
+  });
+
+  pc.addEventListener('track', e => {
+    console.log('Received track:', e.track.kind, e.streams);
+    if (e.streams && e.streams[0]) {
+      showRemoteStream(e.streams[0]);
+    }
+  });
+
+  return pc;
+}
+
+function setupDataChannel(channel) {
+  state.dataChannel = channel;
+
+  channel.onopen = () => {
+    console.log('Data channel open');
+    setStatus('已连接', 'connected');
+  };
+
+  channel.onmessage = async e => {
+    console.log('Data channel message:', e.data);
+    const msg = JSON.parse(e.data);
+
+    if (msg.type === 'offer') {
+      // Viewer receives offer for renegotiation (screen share)
+      await viewerHandleOffer(msg);
+    } else if (msg.type === 'answer') {
+      // Host receives answer for renegotiation
+      await hostHandleAnswer(msg);
+    }
+  };
+
+  channel.onerror = e => {
+    console.error('Data channel error:', e);
+  };
+}
+
+async function waitForIce(pc) {
+  return new Promise(resolve => {
+    if (pc.iceGatheringState === 'complete') {
+      resolve();
+    } else {
+      const timeout = setTimeout(resolve, 5000);
+      pc.addEventListener('icegatheringstatechange', () => {
+        if (pc.iceGatheringState === 'complete') {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    }
+  });
+}
+
+// Wait for ICE connection to be stable (connected or failed)
+function waitForIceConnected(pc) {
+  return new Promise(resolve => {
+    if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+      resolve();
+      return;
+    }
+    const handler = () => {
+      console.log('ICE connection state:', pc.iceConnectionState);
+      if (pc.iceConnectionState === 'connected' || pc.iceConnectionState === 'completed') {
+        pc.removeEventListener('iceconnectionstatechange', handler);
+        resolve();
+      } else if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+        pc.removeEventListener('iceconnectionstatechange', handler);
+        resolve(); // resolve anyway, don't block
+      }
+    };
+    pc.addEventListener('iceconnectionstatechange', handler);
+    // Timeout safety
+    setTimeout(() => {
+      pc.removeEventListener('iceconnectionstatechange', handler);
+      resolve();
+    }, 10000);
+  });
+}
+
+// ============ Screen Sharing ============
+async function startScreenShare() {
+  try {
+    $('shareBtn').disabled = true;
+
+    // Capture screen with audio
+    const stream = await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'monitor',
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        frameRate: { ideal: 30 },
+      },
+      audio: true,
+    });
+
+    state.localStream = stream;
+
+    // Show local preview
+    const video = $('remoteVideo');
+    video.srcObject = stream;
+    video.muted = true;
+    video.classList.add('visible');
+    $('videoPlaceholder').classList.add('hidden');
+    $('videoArea').classList.remove('empty');
+
+    // If we're host, send offer to viewer via data channel
+    if (state.role === 'host' && state.dataChannel && state.dataChannel.readyState === 'open') {
+      await sendOfferToViewer(stream);
+    }
+
+    // If we're viewer, we receive from host automatically
+    // (host will send offer via data channel)
+
+    // UI update
+    $('shareBtn').classList.add('hidden');
+    $('stopBtn').classList.remove('hidden');
+    $('stopBtn').disabled = false;
+    setStatus('共享中', 'connected');
+
+    // Handle stream end
+    stream.getVideoTracks()[0].onended = () => {
+      stopScreenShare();
+    };
+
+  } catch (err) {
+    console.error('Share error:', err);
+    if (err.name !== 'AbortError') {
+      showError('无法捕获屏幕: ' + err.message);
+    }
+    $('shareBtn').disabled = false;
+  }
+}
+
+async function sendOfferToViewer(stream) {
+  console.log('Creating offer to share stream with viewer...');
+
+  // Add stream tracks to peer connection BEFORE creating offer
+  console.log('Adding tracks to peer connection');
+  stream.getTracks().forEach(track => {
+    state.peer.addTrack(track, stream);
+  });
+
+  // Create offer with the new tracks
+  const offer = await state.peer.createOffer();
+  await state.peer.setLocalDescription(offer);
+  await waitForIce(state.peer);
+
+  // Send offer via data channel
+  state.dataChannel.send(JSON.stringify({
+    type: 'offer',
+    sdp: state.peer.localDescription.sdp,
+    streamId: stream.id,
+  }));
+
+  console.log('Offer sent to viewer');
+}
+
+async function viewerHandleOffer(msg) {
+  console.log('Viewer received offer for screen share');
+
+  try {
+    // Apply the offer from host (this includes the screen share tracks)
+    await state.peer.setRemoteDescription({ type: 'offer', sdp: msg.sdp });
+
+    // Create answer
+    const answer = await state.peer.createAnswer();
+    await state.peer.setLocalDescription(answer);
+    await waitForIce(state.peer);
+
+    // Send answer back to host
+    state.dataChannel.send(JSON.stringify({
+      type: 'answer',
+      sdp: state.peer.localDescription.sdp,
+    }));
+
+    console.log('Viewer sent answer');
+  } catch (err) {
+    console.error('Viewer handle offer error:', err);
+  }
+}
+
+async function hostHandleAnswer(msg) {
+  console.log('Host received answer for screen share');
+  try {
+    await state.peer.setRemoteDescription({ type: 'answer', sdp: msg.sdp });
+    console.log('Host applied answer');
+  } catch (err) {
+    console.error('Host handle answer error:', err);
+  }
+}
+
+function stopScreenShare() {
+  if (state.localStream) {
+    state.localStream.getTracks().forEach(track => track.stop());
+    state.localStream = null;
+  }
+
+  // Remove tracks from peer
+  if (state.peer) {
+    state.peer.getSenders().forEach(sender => {
+      if (sender.track) {
+        state.peer.removeTrack(sender);
+      }
+    });
+  }
+
+  // UI update
+  const video = $('remoteVideo');
+  video.srcObject = null;
+  video.classList.remove('visible');
+  $('videoPlaceholder').classList.remove('hidden');
+  $('videoArea').classList.add('empty');
+
+  $('stopBtn').classList.add('hidden');
+  $('shareBtn').classList.remove('hidden');
+  $('shareBtn').disabled = false;
+
+  setStatus('已连接', 'connected');
+}
+
+function showRemoteStream(stream) {
+  console.log('Showing remote stream:', stream);
+  const video = $('remoteVideo');
+  video.srcObject = stream;
+  video.classList.add('visible');
+  $('videoPlaceholder').classList.add('hidden');
+  $('videoArea').classList.remove('empty');
+
+  video.play().catch(err => {
+    console.log('Autoplay blocked:', err.message);
+  });
+
+  // Enable share button for host
+  if (state.role === 'host') {
+    $('shareBtn').disabled = false;
+  }
+}
+
+// ============ Init ============
+console.log('ScreenShare P2P initialized');
+</script>
+</body>
+</html>
