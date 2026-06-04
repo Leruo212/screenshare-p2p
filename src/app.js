@@ -206,16 +206,22 @@ function viewerStart(ui, stateMachine, hostId) {
           ui.setStatus('已连接，等待共享...', 'connected');
         },
         onRemoteStream(stream) {
+          console.log('[viewer] onRemoteStream fired, tracks:', stream.getTracks().map((t) => t.kind));
           stateMachine.transition('stream-received');
           ui.setRemoteStream(stream);
           ui.showPanel('viewer-stream');
           ui.setStatus('正在接收共享', 'connected');
           const video = document.getElementById('remoteVideo');
-          if (video && typeof video.play === 'function') {
+          if (!video) return;
+          // Mute the element regardless of the HTML attribute — some browsers
+          // still enforce autoplay policy if a stream has audio tracks.
+          // Users can unmute by right-clicking the video.
+          video.muted = true;
+          if (typeof video.play === 'function') {
             const p = video.play();
             if (p && typeof p.catch === 'function') {
-              p.catch(() => {
-                /* autoplay may be blocked; the user can click play */
+              p.catch((err) => {
+                console.warn('[viewer] video.play() rejected:', err && err.message);
               });
             }
           }

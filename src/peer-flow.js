@@ -65,11 +65,15 @@ export function createHost({ roomId, callbacks }) {
 
   function pushStreamToViewer() {
     if (!viewerId || !localStream) return;
+    console.log('[host] pushing stream to viewer', viewerId, 'tracks:', localStream.getTracks().map((t) => t.kind));
     // The viewer listens for `peer.on('call', mc)` and reads `mc.on('stream')`,
     // so this call surfaces the screen stream on the viewer side.
     const call = peer.call(viewerId, localStream);
     if (call) {
-      if (callbacks.onError) call.on('error', (err) => callbacks.onError(err));
+      if (callbacks.onError) call.on('error', (err) => {
+        console.error('[host] outgoing call error:', err);
+        callbacks.onError(err);
+      });
     } else if (callbacks.onError) {
       // Should not happen — we have a valid localStream. Surface defensively.
       callbacks.onError(
@@ -142,23 +146,29 @@ export function connectAsViewer({ hostId, callbacks }) {
 
     // Listen for the host to call us with the screen stream.
     peer.on('call', (mc) => {
+      console.log('[viewer] incoming call from host, answering');
       incomingCall = mc;
       if (callbacks.onError) {
-        mc.on('error', (err) => callbacks.onError(err));
+        mc.on('error', (err) => {
+          console.error('[viewer] media call error:', err);
+          callbacks.onError(err);
+        });
       }
       mc.on('stream', (remoteStream) => {
+        console.log('[viewer] got remote stream, tracks:', remoteStream.getTracks().map((t) => t.kind));
         callbacks.onRemoteStream?.(remoteStream);
       });
       mc.on('close', () => {
         // Don't double-fire: the data channel's close is the source of truth.
       });
-      // Answer the call so WebRTC negotiation completes. We pass no stream
-      // because we have nothing to send back.
-      try {
-        mc.answer();
-      } catch (err) {
+      // mc.answer() is async. The promise may reject if WebRTC negotiation
+      // fails (e.g. ICE can't reach the host). We don't currently have an
+      // outgoing stream, but answer() with no argument is valid: the host's
+      // offer contains tracks, our answer is recvonly for those tracks.
+      Promise.resolve(mc.answer()).catch((err) => {
+        console.error('[viewer] mc.answer() rejected:', err);
         if (callbacks.onError) callbacks.onError(err);
-      }
+      });
     });
   }
 

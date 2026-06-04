@@ -245,7 +245,7 @@ describe('connectAsViewer', () => {
     expect(incoming.answeredWith).toBeUndefined();
 
     // When the host's stream arrives, fire onRemoteStream.
-    const stream = { id: 'host-screen' };
+    const stream = { id: 'host-screen', getTracks: () => [{ kind: 'video' }] };
     incoming.emit('stream', stream);
     expect(onRemoteStream).toHaveBeenCalledWith(stream);
   });
