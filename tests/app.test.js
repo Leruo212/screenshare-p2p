@@ -43,6 +43,10 @@ function buildDOM() {
       <div id="videoArea">
         <video id="remoteVideo"></video>
         <button id="fullscreenBtn">Fullscreen</button>
+        <button id="unmuteBtn" class="unmute-btn hidden">
+          <span class="unmute-icon"></span>
+          <span class="unmute-label"></span>
+        </button>
       </div>
     </section>
   `;
@@ -291,6 +295,65 @@ describe('app.js — viewer flow (valid hash)', () => {
     expect(document.getElementById('viewerStreamPanel').classList.contains('hidden')).toBe(false);
   });
 
+  it('viewer defaults to muted but surfaces an unmute button (autoplay policy)', async () => {
+    __setHash('#abcd-1234-efgh');
+    await bootApp();
+    fireOpenFor(createdPeers[0]);
+
+    const incoming = new MockMediaConnection('room-1', { id: 'host-screen' });
+    createdPeers[0].emit('call', incoming);
+    incoming.emit('stream', { id: 'host-screen', getTracks: () => [] });
+
+    const video = document.getElementById('remoteVideo');
+    // Default muted to satisfy autoplay policy.
+    expect(video.muted).toBe(true);
+    // Unmute button always visible — label + icon reflect current state.
+    const unmuteBtn = document.getElementById('unmuteBtn');
+    expect(unmuteBtn.querySelector('.unmute-label').textContent).toMatch(/已静音/);
+    expect(unmuteBtn.querySelector('.unmute-icon').textContent).toBe('🔇');
+  });
+
+  it('clicking the unmute button toggles video.muted and persists the preference', async () => {
+    __setHash('#abcd-1234-efgh');
+    await bootApp();
+    fireOpenFor(createdPeers[0]);
+
+    const incoming = new MockMediaConnection('room-1', { id: 'host-screen' });
+    createdPeers[0].emit('call', incoming);
+    incoming.emit('stream', { id: 'host-screen', getTracks: () => [] });
+
+    const video = document.getElementById('remoteVideo');
+    const unmuteBtn = document.getElementById('unmuteBtn');
+    expect(video.muted).toBe(true);
+
+    // Click → unmuted.
+    unmuteBtn.click();
+    expect(video.muted).toBe(false);
+    expect(unmuteBtn.querySelector('.unmute-label').textContent).toMatch(/已取消静音/);
+    expect(globalThis.localStorage.getItem('screenshare-p2p-unmuted')).toBe('1');
+
+    // Click again → muted.
+    unmuteBtn.click();
+    expect(video.muted).toBe(true);
+    expect(globalThis.localStorage.getItem('screenshare-p2p-unmuted')).toBe('0');
+  });
+
+  it('viewer auto-unmutes on subsequent visits when the preference is "1"', async () => {
+    globalThis.localStorage.setItem('screenshare-p2p-unmuted', '1');
+    __setHash('#abcd-1234-efgh');
+    await bootApp();
+    fireOpenFor(createdPeers[0]);
+
+    const incoming = new MockMediaConnection('room-1', { id: 'host-screen' });
+    createdPeers[0].emit('call', incoming);
+    incoming.emit('stream', { id: 'host-screen', getTracks: () => [] });
+
+    const video = document.getElementById('remoteVideo');
+    expect(video.muted).toBe(false);
+    const unmuteBtn = document.getElementById('unmuteBtn');
+    expect(unmuteBtn.querySelector('.unmute-label').textContent).toMatch(/已取消静音/);
+  });
+
   it('viewer onDisconnected updates status and shows error', async () => {
     __setHash('#abcd-1234-efgh');
     await bootApp();
@@ -358,8 +421,8 @@ describe('app.js — host start/stop sharing', () => {
 
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalled();
     const callArgs = navigator.mediaDevices.getDisplayMedia.mock.calls[0][0];
-    expect(callArgs.video.width).toEqual({ ideal: 1280 });
-    expect(callArgs.video.height).toEqual({ ideal: 720 });
+    expect(callArgs.video.width).toEqual({ max: 1280 });
+    expect(callArgs.video.height).toEqual({ max: 720 });
   });
 
   it('default quality is 1080p if the host does not change the selector', async () => {
@@ -374,8 +437,8 @@ describe('app.js — host start/stop sharing', () => {
     await new Promise((r) => setTimeout(r, 0));
 
     const callArgs = navigator.mediaDevices.getDisplayMedia.mock.calls[0][0];
-    expect(callArgs.video.width).toEqual({ ideal: 1920 });
-    expect(callArgs.video.height).toEqual({ ideal: 1080 });
+    expect(callArgs.video.width).toEqual({ max: 1920 });
+    expect(callArgs.video.height).toEqual({ max: 1080 });
   });
 
   it('stop sharing: track.onended is set, calling it triggers the stop flow', async () => {

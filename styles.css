@@ -385,11 +385,51 @@ h1 {
   z-index: 1;
 }
 
-.video-area:fullscreen .viewer-hint,
-.video-area:-webkit-full-screen .viewer-hint {
-  bottom: 16px;
-  left: 16px;
+.unmute-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+  user-select: none;
+}
+
+.unmute-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.04);
+}
+
+.unmute-btn:active {
+  transform: scale(0.96);
+}
+
+.unmute-btn.is-unmuted {
+  background: rgba(74, 222, 128, 0.25);
+  border: 1px solid rgba(74, 222, 128, 0.6);
+}
+
+.unmute-icon {
   font-size: 14px;
+  line-height: 1;
+}
+
+.video-area:fullscreen .unmute-btn,
+.video-area:-webkit-full-screen .unmute-btn {
+  bottom: 16px;
+  right: 16px;
+  font-size: 14px;
+  padding: 8px 14px;
 }
 
 /* ---- Quality selector (host lobby) -------------------------------------- */

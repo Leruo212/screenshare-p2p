@@ -74,6 +74,22 @@ export function createHost({ roomId, callbacks }) {
         console.error('[host] outgoing call error:', err);
         callbacks.onError(err);
       });
+      // Diagnostic: ICE connection state is the smoking gun when the viewer
+      // sees "正在接收共享" but the screen is black. If ICE never reaches
+      // connected/completed, NAT traversal is failing and a TURN server is
+      // needed. PeerConnection is exposed on the call object in PeerJS 1.5+.
+      const pc = call.peerConnection;
+      if (pc) {
+        const logIce = () =>
+          console.log(
+            `[host] ICE state: ${pc.iceConnectionState} | conn: ${pc.connectionState} | signaling: ${pc.signalingState}`
+          );
+        pc.addEventListener('iceconnectionstatechange', logIce);
+        pc.addEventListener('connectionstatechange', logIce);
+        logIce();
+      } else {
+        console.warn('[host] call.peerConnection is undefined — cannot diagnose ICE');
+      }
     } else if (callbacks.onError) {
       // Should not happen — we have a valid localStream. Surface defensively.
       callbacks.onError(
