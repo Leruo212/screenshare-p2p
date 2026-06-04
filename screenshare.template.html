@@ -1,12 +1,74 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>ScreenShare P2P</title>
   <style>/* __CSS__ */</style>
 </head>
 <body>
-  <div id="app">App</div>
+  <div class="container">
+    <header class="page-header">
+      <h1>ScreenShare P2P</h1>
+      <p class="subtitle">P2P直连 · 无需中转 · 链接分享即可</p>
+    </header>
+
+    <div class="status-bar">
+      <div class="status-row">
+        <span class="status-dot" id="statusDot"></span>
+        <span id="statusText">未连接</span>
+      </div>
+    </div>
+
+    <div class="error hidden" id="errorToast" role="alert"></div>
+
+    <!-- Landing -->
+    <div class="panel" id="landingPanel">
+      <div class="panel-title">开始</div>
+      <p class="panel-hint">创建一个房间并把链接发给朋友，或加入朋友发来的链接（链接会带 # 房间号）。</p>
+      <div class="row">
+        <button class="btn btn-primary" id="createBtn">创建房间</button>
+        <button class="btn btn-secondary" id="joinBtn">加入房间</button>
+      </div>
+    </div>
+
+    <!-- Host Lobby -->
+    <div class="panel hidden" id="hostLobbyPanel">
+      <div class="panel-title">你的房间</div>
+      <p class="panel-hint">把下面的链接发给朋友。朋友打开后会自动连接。</p>
+      <div class="info-box">
+        <h4>分享链接</h4>
+        <div class="share-link-row">
+          <a id="shareLink" target="_blank" rel="noopener"></a>
+          <button class="copy-btn" id="copyBtn" type="button">复制</button>
+        </div>
+      </div>
+      <p class="hint">朋友连接后，可以点击"开始共享"。</p>
+      <div class="row">
+        <button class="btn btn-primary" id="startShareBtn" disabled>开始共享</button>
+        <button class="btn btn-secondary hidden" id="stopShareBtn">停止共享</button>
+      </div>
+    </div>
+
+    <!-- Viewer Waiting -->
+    <div class="panel hidden" id="viewerWaitingPanel">
+      <div class="panel-title">正在连接</div>
+      <p class="panel-hint">等待主机开始共享屏幕...</p>
+      <button class="btn btn-secondary hidden" id="reconnectBtn">重新连接</button>
+    </div>
+
+    <!-- Viewer Stream -->
+    <div class="panel hidden" id="viewerStreamPanel">
+      <div class="panel-title">共享画面</div>
+      <div class="video-area">
+        <video id="remoteVideo" autoplay playsinline></video>
+      </div>
+    </div>
+  </div>
+
+  <!-- PeerJS via CDN. Loaded synchronously so window.Peer is available
+       before our app code runs. -->
+  <script src="https://unpkg.com/peerjs@1.5.5/dist/peerjs.min.js"></script>
   <script>/* __SCRIPTS__ */</script>
 </body>
 </html>
