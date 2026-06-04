@@ -175,6 +175,22 @@ describe('app.js — landing page (no hash)', () => {
     expect(document.getElementById('landingPanel').classList.contains('hidden')).toBe(true);
   });
 
+  it('host peer is registered with NORMALIZED room ID (lowercase, no dashes)', async () => {
+    // Regression: the host used to call new Peer(rawDisplayForm) while the
+    // viewer called new Peer(normalizedForm). The broker couldn't match them,
+    // so the call failed with "Could not connect to peer". Both sides must
+    // agree on the canonical (lowercase, no-dashes) form.
+    __setHash('');
+    await bootApp();
+    document.getElementById('createBtn').click();
+    // Peer id is set in the constructor.
+    const hostPeerId = createdPeers[0].id;
+    expect(hostPeerId).toMatch(/^[a-z0-9]{12}$/);
+    // It should match the normalized form of the hash on the URL.
+    const hashRoom = window.location.hash.slice(1);
+    expect(hostPeerId).toBe(hashRoom.toLowerCase().replace(/-/g, ''));
+  });
+
   it('after createBtn click, location.hash is set to "#<roomId>"', async () => {
     __setHash('');
     await bootApp();

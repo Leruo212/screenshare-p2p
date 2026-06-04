@@ -706,6 +706,14 @@ function generateRoomId() {
   return segments.join('-');
 }
 
+// Canonicalize a room ID to the form used to register with the PeerJS broker:
+// lowercase, no dashes. Both host and viewer must use this form, otherwise the
+// broker can't match them.
+function normalizeRoomId(roomId) {
+  if (typeof roomId !== 'string') return '';
+  return roomId.toLowerCase().replace(/-/g, '');
+}
+
 const ROOM_ID_REGEX = /^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/;
 
 function parseRoomId(input) {
@@ -719,10 +727,11 @@ function parseRoomId(input) {
   if (!ROOM_ID_REGEX.test(trimmed)) {
     return { valid: false, error: 'Room ID must be 4-4-4 alphanumeric characters' };
   }
-  return { valid: true, id: trimmed.toLowerCase().replace(/-/g, '') };
+  return { valid: true, id: normalizeRoomId(trimmed) };
 }
 
   __room_id.generateRoomId = generateRoomId;
+  __room_id.normalizeRoomId = normalizeRoomId;
   __room_id.parseRoomId = parseRoomId;
 })();
 // --- state-machine.js ---
@@ -1051,7 +1060,7 @@ __app = {};
 
 const { createStateMachine, STATES } = __state_machine;
 const { initUI } = __ui_controller;
-const { generateRoomId } = __room_id;
+const { generateRoomId, normalizeRoomId } = __room_id;
 const { getRoomIdFromHash, buildShareUrl } = __url;
 const { createHost, connectAsViewer } = __peer_flow;
 const { buildDisplayMediaConstraints } = __constraints;
@@ -1176,10 +1185,15 @@ function hostStart(ui, stateMachine) {
   localStream = null;
 
   // Generate a room id, set the hash, and create the host peer.
-  const roomId = generateRoomId();
-  setHash(roomId);
+  const roomIdDisplay = generateRoomId();
+  // The display form (with dashes, mixed case) is for humans. The actual
+  // peer registration with the broker must use the normalized form
+  // (lowercase, no dashes) — the viewer's URL parser produces the same form,
+  // so both sides agree on the canonical ID.
+  const roomId = normalizeRoomId(roomIdDisplay);
+  setHash(roomIdDisplay);
 
-  const shareUrl = buildShareUrl(roomId, baseUrlFromLocation());
+  const shareUrl = buildShareUrl(roomIdDisplay, baseUrlFromLocation());
   ui.setShareLink(shareUrl);
   ui.showPanel('host-lobby');
   ui.setStatus('等待观众加入...', 'waiting');

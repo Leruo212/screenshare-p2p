@@ -27,6 +27,14 @@ export function generateRoomId() {
   return segments.join('-');
 }
 
+// Canonicalize a room ID to the form used to register with the PeerJS broker:
+// lowercase, no dashes. Both host and viewer must use this form, otherwise the
+// broker can't match them.
+export function normalizeRoomId(roomId) {
+  if (typeof roomId !== 'string') return '';
+  return roomId.toLowerCase().replace(/-/g, '');
+}
+
 const ROOM_ID_REGEX = /^[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}-[a-zA-Z0-9]{4}$/;
 
 export function parseRoomId(input) {
@@ -40,5 +48,5 @@ export function parseRoomId(input) {
   if (!ROOM_ID_REGEX.test(trimmed)) {
     return { valid: false, error: 'Room ID must be 4-4-4 alphanumeric characters' };
   }
-  return { valid: true, id: trimmed.toLowerCase().replace(/-/g, '') };
+  return { valid: true, id: normalizeRoomId(trimmed) };
 }

@@ -6,7 +6,7 @@
 
 import { createStateMachine, STATES } from './state-machine.js';
 import { initUI } from './ui-controller.js';
-import { generateRoomId } from './room-id.js';
+import { generateRoomId, normalizeRoomId } from './room-id.js';
 import { getRoomIdFromHash, buildShareUrl } from './url.js';
 import { createHost, connectAsViewer } from './peer-flow.js';
 import { buildDisplayMediaConstraints } from './constraints.js';
@@ -131,10 +131,15 @@ function hostStart(ui, stateMachine) {
   localStream = null;
 
   // Generate a room id, set the hash, and create the host peer.
-  const roomId = generateRoomId();
-  setHash(roomId);
+  const roomIdDisplay = generateRoomId();
+  // The display form (with dashes, mixed case) is for humans. The actual
+  // peer registration with the broker must use the normalized form
+  // (lowercase, no dashes) — the viewer's URL parser produces the same form,
+  // so both sides agree on the canonical ID.
+  const roomId = normalizeRoomId(roomIdDisplay);
+  setHash(roomIdDisplay);
 
-  const shareUrl = buildShareUrl(roomId, baseUrlFromLocation());
+  const shareUrl = buildShareUrl(roomIdDisplay, baseUrlFromLocation());
   ui.setShareLink(shareUrl);
   ui.showPanel('host-lobby');
   ui.setStatus('等待观众加入...', 'waiting');
