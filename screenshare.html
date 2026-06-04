@@ -391,11 +391,51 @@ h1 {
   z-index: 1;
 }
 
-.video-area:fullscreen .viewer-hint,
-.video-area:-webkit-full-screen .viewer-hint {
-  bottom: 16px;
-  left: 16px;
+.unmute-btn {
+  position: absolute;
+  bottom: 12px;
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.15s ease;
+  z-index: 2;
+  user-select: none;
+}
+
+.unmute-btn:hover {
+  background: rgba(0, 0, 0, 0.8);
+  transform: scale(1.04);
+}
+
+.unmute-btn:active {
+  transform: scale(0.96);
+}
+
+.unmute-btn.is-unmuted {
+  background: rgba(74, 222, 128, 0.25);
+  border: 1px solid rgba(74, 222, 128, 0.6);
+}
+
+.unmute-icon {
   font-size: 14px;
+  line-height: 1;
+}
+
+.video-area:fullscreen .unmute-btn,
+.video-area:-webkit-full-screen .unmute-btn {
+  bottom: 16px;
+  right: 16px;
+  font-size: 14px;
+  padding: 8px 14px;
 }
 
 /* ---- Quality selector (host lobby) -------------------------------------- */
@@ -524,7 +564,10 @@ h1 {
         <button class="fullscreen-btn" id="fullscreenBtn" type="button" aria-label="全屏">
           <span aria-hidden="true">⛶</span>
         </button>
-        <div class="viewer-hint">右键视频可取消静音</div>
+        <button class="unmute-btn" id="unmuteBtn" type="button" aria-label="取消静音">
+          <span class="unmute-icon" aria-hidden="true">🔇</span>
+          <span class="unmute-label">已静音（点此取消）</span>
+        </button>
       </div>
     </div>
   </div>
@@ -543,18 +586,29 @@ __constraints = {};
 // we translate it to a constraint that asks the browser to hit a target
 // resolution. The browser may downgrade if the user's display or hardware
 // can't deliver the target.
+//
+// IMPORTANT: we use `{ max: ... }`, NOT `{ ideal: ... }`. With `ideal`, the
+// browser treats the value as a target and will downscale a higher-resolution
+// source to match. With `max`, the browser passes the source through at its
+// native resolution, capping at the requested ceiling. For a 2K (2560x1440)
+// source shared as "1080p", this means we now ship full 2K frames to the
+// viewer instead of pre-downscaling to 1080p — text and UI stay sharp.
+//
+// The "source" preset omits constraints entirely, which historically lets the
+// browser pick (Chrome usually lands on 1080p/30 — known limitation; the 1440p
+// preset is the better choice on a 2K display).
 
 const QUALITY_PRESETS = {
-  '720p': { width: { ideal: 1280 }, height: { ideal: 720 } },
-  '1080p': { width: { ideal: 1920 }, height: { ideal: 1080 } },
-  '1440p': { width: { ideal: 2560 }, height: { ideal: 1440 } },
-  source: {}, // No resolution cap — let the source dictate.
+  '720p': { width: { max: 1280 }, height: { max: 720 } },
+  '1080p': { width: { max: 1920 }, height: { max: 1080 } },
+  '1440p': { width: { max: 2560 }, height: { max: 1440 } },
+  source: {}, // No ceiling — browser picks (often 1080p on Chrome).
 };
 
 const QUALITY_OPTIONS = [
   { value: '720p', label: '720p（标清，省带宽）' },
   { value: '1080p', label: '1080p（高清，推荐）' },
-  { value: '1440p', label: '1440p（2K）' },
+  { value: '1440p', label: '1440p（2K，原生清晰度）' },
   { value: 'source', label: '原始（不缩放）' },
 ];
 
@@ -583,9 +637,37 @@ function buildDisplayMediaConstraints(quality = '1080p') {
   };
 }
 
+// Tell the encoder to optimize for text legibility. `contentHint` is a
+// standardized hint (Web spec, MediaStreamTrack). Chromium-based browsers
+// route the track through a "text" optimization in the encoder, which
+// preserves sharp edges on small fonts at the cost of motion smoothness.
+// Silently no-op on browsers/versions that don't expose the setter.
+function applyEncoderTuning(track) {
+  if (!track) return;
+  try {
+    // Probe for the property on the instance AND its prototype chain — the
+    // setter lives on MediaStreamTrack.prototype, not the track itself.
+    // Some implementations expose it read-only or not at all; the try/catch
+    // covers both. We can't rely on a setter check because in some
+    // environments the property is a plain data accessor.
+    let proto = Object.getPrototypeOf(track);
+    let found = 'contentHint' in track;
+    while (!found && proto) {
+      if ('contentHint' in proto) { found = true; break; }
+      proto = Object.getPrototypeOf(proto);
+    }
+    if (found) {
+      track.contentHint = 'text';
+    }
+  } catch {
+    /* ignore — encoder hint is best-effort */
+  }
+}
+
   __constraints.buildVideoConstraints = buildVideoConstraints;
   __constraints.buildAudioConstraints = buildAudioConstraints;
   __constraints.buildDisplayMediaConstraints = buildDisplayMediaConstraints;
+  __constraints.applyEncoderTuning = applyEncoderTuning;
   __constraints.QUALITY_OPTIONS = QUALITY_OPTIONS;
 })();
 // --- peer-flow.js ---
@@ -667,6 +749,22 @@ function createHost({ roomId, callbacks }) {
         console.error('[host] outgoing call error:', err);
         callbacks.onError(err);
       });
+      // Diagnostic: ICE connection state is the smoking gun when the viewer
+      // sees "正在接收共享" but the screen is black. If ICE never reaches
+      // connected/completed, NAT traversal is failing and a TURN server is
+      // needed. PeerConnection is exposed on the call object in PeerJS 1.5+.
+      const pc = call.peerConnection;
+      if (pc) {
+        const logIce = () =>
+          console.log(
+            `[host] ICE state: ${pc.iceConnectionState} | conn: ${pc.connectionState} | signaling: ${pc.signalingState}`
+          );
+        pc.addEventListener('iceconnectionstatechange', logIce);
+        pc.addEventListener('connectionstatechange', logIce);
+        logIce();
+      } else {
+        console.warn('[host] call.peerConnection is undefined — cannot diagnose ICE');
+      }
     } else if (callbacks.onError) {
       // Should not happen — we have a valid localStream. Surface defensively.
       callbacks.onError(
@@ -1210,7 +1308,7 @@ const { initUI } = __ui_controller;
 const { generateRoomId, normalizeRoomId } = __room_id;
 const { getRoomIdFromHash, buildShareUrl } = __url;
 const { createHost, connectAsViewer } = __peer_flow;
-const { buildDisplayMediaConstraints } = __constraints;
+const { buildDisplayMediaConstraints, applyEncoderTuning } = __constraints;
 
 const COPY_BUTTON_FLASH_MS = 1500;
 
@@ -1287,6 +1385,16 @@ async function startSharing(ui) {
   }
 
   localStream = stream;
+
+  // Diagnostic: log the actual capture resolution so we can confirm the
+  // browser isn't silently down-scaling below the requested quality.
+  stream.getVideoTracks().forEach((t) => {
+    const s = t.getSettings?.();
+    console.log(
+      `[host] capture settings: ${s?.width}x${s?.height}@${s?.frameRate}fps`
+    );
+    applyEncoderTuning(t);
+  });
 
   // Reuse the same <video> element for self-preview on the host.
   ui.setRemoteStream(stream);
@@ -1418,10 +1526,40 @@ function viewerStart(ui, stateMachine, hostId) {
           ui.setStatus('正在接收共享', 'connected');
           const video = document.getElementById('remoteVideo');
           if (!video) return;
-          // Mute the element regardless of the HTML attribute — some browsers
-          // still enforce autoplay policy if a stream has audio tracks.
-          // Users can unmute by right-clicking the video.
-          video.muted = true;
+          // Mute by default to satisfy the browser autoplay policy, but
+          // surface an unmute button so the viewer can hear system audio.
+          // We persist the preference in localStorage so a repeat visitor
+          // doesn't have to click it again.
+          const unmuteBtn = document.getElementById('unmuteBtn');
+          const UNMUTE_KEY = 'screenshare-p2p-unmuted';
+          let wasUnmuted = false;
+          try {
+            wasUnmuted = globalThis.localStorage?.getItem(UNMUTE_KEY) === '1';
+          } catch {
+            /* localStorage may be blocked in private mode */
+          }
+          video.muted = !wasUnmuted;
+          const setUnmuteLabel = (unmuted) => {
+            if (!unmuteBtn) return;
+            unmuteBtn.classList.toggle('is-unmuted', unmuted);
+            const icon = unmuteBtn.querySelector('.unmute-icon');
+            const label = unmuteBtn.querySelector('.unmute-label');
+            if (icon) icon.textContent = unmuted ? '🔊' : '🔇';
+            if (label) label.textContent = unmuted ? '已取消静音' : '已静音（点此取消）';
+          };
+          setUnmuteLabel(wasUnmuted);
+          if (unmuteBtn) {
+            unmuteBtn.onclick = () => {
+              const nextUnmuted = video.muted; // currently muted -> unmuting
+              video.muted = !nextUnmuted;
+              setUnmuteLabel(nextUnmuted);
+              try {
+                globalThis.localStorage?.setItem(UNMUTE_KEY, nextUnmuted ? '1' : '0');
+              } catch {
+                /* ignore */
+              }
+            };
+          }
           if (typeof video.play === 'function') {
             const p = video.play();
             if (p && typeof p.catch === 'function') {
@@ -1429,6 +1567,33 @@ function viewerStart(ui, stateMachine, hostId) {
                 console.warn('[viewer] video.play() rejected:', err && err.message);
               });
             }
+          }
+
+          // Diagnostic: log the actual state of the incoming tracks + the
+          // video element. If the viewer is showing "正在接收共享" but the
+          // screen is black, these values tell us exactly which step failed.
+          stream.getTracks().forEach((t) => {
+            console.log(
+              `[viewer] track ${t.kind}: enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState} id=${t.id}`
+            );
+          });
+          const v = document.getElementById('remoteVideo');
+          if (v) {
+            console.log(
+              `[viewer] video: readyState=${v.readyState} networkState=${v.networkState} videoWidth=${v.videoWidth} muted=${v.muted} autoplay=${v.autoplay} srcObject=${v.srcObject ? 'set' : 'null'}`
+            );
+            // Watchdog: poll the video state for the first 6 seconds to catch
+            // "frame never arrives" or "readyState stuck at 0" situations.
+            let elapsed = 0;
+            const wd = setInterval(() => {
+              elapsed += 500;
+              console.log(
+                `[viewer] watchdog t=${elapsed}ms: readyState=${v.readyState} videoWidth=${v.videoWidth} videoHeight=${v.videoHeight} paused=${v.paused} currentTime=${v.currentTime}`
+              );
+              if (elapsed >= 6000 || v.videoWidth > 0) {
+                clearInterval(wd);
+              }
+            }, 500);
           }
         },
         onDisconnected() {

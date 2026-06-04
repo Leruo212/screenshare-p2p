@@ -9,7 +9,7 @@ import { initUI } from './ui-controller.js';
 import { generateRoomId, normalizeRoomId } from './room-id.js';
 import { getRoomIdFromHash, buildShareUrl } from './url.js';
 import { createHost, connectAsViewer } from './peer-flow.js';
-import { buildDisplayMediaConstraints } from './constraints.js';
+import { buildDisplayMediaConstraints, applyEncoderTuning } from './constraints.js';
 
 const COPY_BUTTON_FLASH_MS = 1500;
 
@@ -86,6 +86,16 @@ async function startSharing(ui) {
   }
 
   localStream = stream;
+
+  // Diagnostic: log the actual capture resolution so we can confirm the
+  // browser isn't silently down-scaling below the requested quality.
+  stream.getVideoTracks().forEach((t) => {
+    const s = t.getSettings?.();
+    console.log(
+      `[host] capture settings: ${s?.width}x${s?.height}@${s?.frameRate}fps`
+    );
+    applyEncoderTuning(t);
+  });
 
   // Reuse the same <video> element for self-preview on the host.
   ui.setRemoteStream(stream);
@@ -217,10 +227,40 @@ function viewerStart(ui, stateMachine, hostId) {
           ui.setStatus('正在接收共享', 'connected');
           const video = document.getElementById('remoteVideo');
           if (!video) return;
-          // Mute the element regardless of the HTML attribute — some browsers
-          // still enforce autoplay policy if a stream has audio tracks.
-          // Users can unmute by right-clicking the video.
-          video.muted = true;
+          // Mute by default to satisfy the browser autoplay policy, but
+          // surface an unmute button so the viewer can hear system audio.
+          // We persist the preference in localStorage so a repeat visitor
+          // doesn't have to click it again.
+          const unmuteBtn = document.getElementById('unmuteBtn');
+          const UNMUTE_KEY = 'screenshare-p2p-unmuted';
+          let wasUnmuted = false;
+          try {
+            wasUnmuted = globalThis.localStorage?.getItem(UNMUTE_KEY) === '1';
+          } catch {
+            /* localStorage may be blocked in private mode */
+          }
+          video.muted = !wasUnmuted;
+          const setUnmuteLabel = (unmuted) => {
+            if (!unmuteBtn) return;
+            unmuteBtn.classList.toggle('is-unmuted', unmuted);
+            const icon = unmuteBtn.querySelector('.unmute-icon');
+            const label = unmuteBtn.querySelector('.unmute-label');
+            if (icon) icon.textContent = unmuted ? '🔊' : '🔇';
+            if (label) label.textContent = unmuted ? '已取消静音' : '已静音（点此取消）';
+          };
+          setUnmuteLabel(wasUnmuted);
+          if (unmuteBtn) {
+            unmuteBtn.onclick = () => {
+              const nextUnmuted = video.muted; // currently muted -> unmuting
+              video.muted = !nextUnmuted;
+              setUnmuteLabel(nextUnmuted);
+              try {
+                globalThis.localStorage?.setItem(UNMUTE_KEY, nextUnmuted ? '1' : '0');
+              } catch {
+                /* ignore */
+              }
+            };
+          }
           if (typeof video.play === 'function') {
             const p = video.play();
             if (p && typeof p.catch === 'function') {
@@ -228,6 +268,33 @@ function viewerStart(ui, stateMachine, hostId) {
                 console.warn('[viewer] video.play() rejected:', err && err.message);
               });
             }
+          }
+
+          // Diagnostic: log the actual state of the incoming tracks + the
+          // video element. If the viewer is showing "正在接收共享" but the
+          // screen is black, these values tell us exactly which step failed.
+          stream.getTracks().forEach((t) => {
+            console.log(
+              `[viewer] track ${t.kind}: enabled=${t.enabled} muted=${t.muted} readyState=${t.readyState} id=${t.id}`
+            );
+          });
+          const v = document.getElementById('remoteVideo');
+          if (v) {
+            console.log(
+              `[viewer] video: readyState=${v.readyState} networkState=${v.networkState} videoWidth=${v.videoWidth} muted=${v.muted} autoplay=${v.autoplay} srcObject=${v.srcObject ? 'set' : 'null'}`
+            );
+            // Watchdog: poll the video state for the first 6 seconds to catch
+            // "frame never arrives" or "readyState stuck at 0" situations.
+            let elapsed = 0;
+            const wd = setInterval(() => {
+              elapsed += 500;
+              console.log(
+                `[viewer] watchdog t=${elapsed}ms: readyState=${v.readyState} videoWidth=${v.videoWidth} videoHeight=${v.videoHeight} paused=${v.paused} currentTime=${v.currentTime}`
+              );
+              if (elapsed >= 6000 || v.videoWidth > 0) {
+                clearInterval(wd);
+              }
+            }, 500);
           }
         },
         onDisconnected() {
