@@ -59,10 +59,30 @@ class MockMediaConnection extends EventEmitter {
   close() { this.emit('close'); }
 }
 class MockPeer extends EventEmitter {
-  constructor(id) { super(); this.id = id; this._destroyed = false; this._dataConns = []; this._mediaConns = []; }
+  constructor(id) {
+    super();
+    this.id = id;
+    this._destroyed = false;
+    this._dataConns = [];
+    this._mediaConns = [];
+    // Mirrors PeerJS 1.5.5: peer.call() returns undefined while disconnected.
+    this._disconnected = true;
+  }
   connect(remoteId) { const c = new MockDataConnection(remoteId); this._dataConns.push(c); return c; }
-  call(remoteId, stream) { const m = new MockMediaConnection(remoteId, stream); this._mediaConns.push(m); return m; }
+  call(remoteId, stream) {
+    if (this._disconnected) return undefined;
+    const m = new MockMediaConnection(remoteId, stream);
+    this._mediaConns.push(m);
+    return m;
+  }
   destroy() { this._destroyed = true; this.emit('close'); }
+}
+
+// Helper: flip _disconnected to false and emit 'open' to mimic the broker
+// confirming the viewer's ID. The viewer flow defers dial() to this event.
+function fireOpenFor(peer) {
+  peer._disconnected = false;
+  peer.emit('open');
 }
 
 let createdPeers;
@@ -194,6 +214,7 @@ describe('app.js — viewer flow (valid hash)', () => {
   it('on load with valid hash, calls connectAsViewer with normalized id', async () => {
     __setHash('#abcd-1234-efgh');
     await bootApp();
+    fireOpenFor(createdPeers[0]);
 
     // The viewer should show the "viewer-waiting" panel
     expect(document.getElementById('viewerWaitingPanel').classList.contains('hidden')).toBe(false);
@@ -217,6 +238,7 @@ describe('app.js — viewer flow (valid hash)', () => {
   it('viewer onConnected callback updates status to "已连接，等待共享..."', async () => {
     __setHash('#abcd-1234-efgh');
     await bootApp();
+    fireOpenFor(createdPeers[0]);
 
     // Simulate the data connection firing 'open'
     const dataConn = createdPeers[0]._dataConns[0];
@@ -229,6 +251,7 @@ describe('app.js — viewer flow (valid hash)', () => {
   it('viewer onRemoteStream updates the video and shows the stream panel', async () => {
     __setHash('#abcd-1234-efgh');
     await bootApp();
+    fireOpenFor(createdPeers[0]);
 
     // Simulate the host's stream arriving
     const mediaCall = createdPeers[0]._mediaConns[0];
@@ -243,6 +266,7 @@ describe('app.js — viewer flow (valid hash)', () => {
   it('viewer onDisconnected updates status and shows error', async () => {
     __setHash('#abcd-1234-efgh');
     await bootApp();
+    fireOpenFor(createdPeers[0]);
 
     // Simulate the data connection closing
     const dataConn = createdPeers[0]._dataConns[0];

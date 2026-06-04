@@ -50,6 +50,12 @@ class MockPeer extends EventEmitter {
     this._destroyed = false;
     this._dataConnections = [];
     this._mediaConnections = [];
+    // Mirrors PeerJS's `disconnected` flag. When true, peer.call() returns
+    // undefined (real PeerJS 1.5.5 does this — see node_modules reference).
+    this._disconnected = true;
+    // If true, simulate a successful broker handshake: emit 'open' on the
+    // next tick so callers can register listeners first.
+    this._autoOpen = true;
   }
   connect(remoteId) {
     const conn = new MockDataConnection(remoteId);
@@ -57,6 +63,10 @@ class MockPeer extends EventEmitter {
     return conn;
   }
   call(remoteId, stream) {
+    if (this._disconnected) {
+      // Real PeerJS: peer.call() returns undefined when disconnected.
+      return undefined;
+    }
     const mc = new MockMediaConnection(remoteId, stream);
     this._mediaConnections.push(mc);
     return mc;
@@ -95,8 +105,11 @@ afterEach(() => {
 });
 
 // Helper: fire 'open' on the most-recently-created peer to simulate successful
-// registration with the broker.
+// registration with the broker. Also flips `_disconnected` to false so the
+// mock matches real PeerJS: after 'open' fires, call() returns a real
+// MediaConnection, not undefined.
 function fireOpenFor(peer) {
+  peer._disconnected = false;
   peer.emit('open');
 }
 
@@ -221,8 +234,9 @@ describe('createHost', () => {
 // ---- connectAsViewer --------------------------------------------------------
 
 describe('connectAsViewer', () => {
-  it('creates a Peer (with no preset id) and calls peer.connect(hostId)', () => {
+  it('creates a Peer (with no preset id) and calls peer.connect(hostId) once open', () => {
     const viewer = connectAsViewer({ hostId: 'room-1', callbacks: {} });
+    fireOpenFor(createdPeers[0]);
     expect(createdPeers).toHaveLength(1);
     // Viewer does NOT pre-assign its own ID; the broker assigns one.
     expect(createdPeers[0].id).toBeUndefined();
@@ -234,13 +248,17 @@ describe('connectAsViewer', () => {
   it('fires onConnected when the data connection emits "open"', () => {
     const onConnected = vi.fn();
     connectAsViewer({ hostId: 'room-1', callbacks: { onConnected } });
+    fireOpenFor(createdPeers[0]);
     const dataConn = createdPeers[0]._dataConnections[0];
     dataConn.simulateOpen();
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 
-  it('calls peer.call(hostId, null) to request the stream from the host', () => {
+  it('calls peer.call(hostId, null) to request the stream from the host, AFTER open', () => {
     connectAsViewer({ hostId: 'room-1', callbacks: {} });
+    // Before 'open' fires, no outgoing call has been made.
+    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
+    fireOpenFor(createdPeers[0]);
     expect(createdPeers[0]._mediaConnections).toHaveLength(1);
     const call = createdPeers[0]._mediaConnections[0];
     expect(call.remoteId).toBe('room-1');
@@ -251,6 +269,7 @@ describe('connectAsViewer', () => {
   it('fires onRemoteStream when the outgoing MediaConnection emits "stream"', () => {
     const onRemoteStream = vi.fn();
     connectAsViewer({ hostId: 'room-1', callbacks: { onRemoteStream } });
+    fireOpenFor(createdPeers[0]);
     const call = createdPeers[0]._mediaConnections[0];
     const stream = { id: 'host-screen' };
     call.emit('stream', stream);
@@ -260,6 +279,7 @@ describe('connectAsViewer', () => {
   it('fires onDisconnected when the data connection emits "close"', () => {
     const onDisconnected = vi.fn();
     connectAsViewer({ hostId: 'room-1', callbacks: { onDisconnected } });
+    fireOpenFor(createdPeers[0]);
     const dataConn = createdPeers[0]._dataConnections[0];
     dataConn.emit('close');
     expect(onDisconnected).toHaveBeenCalledTimes(1);
@@ -277,5 +297,25 @@ describe('connectAsViewer', () => {
     const viewer = connectAsViewer({ hostId: 'room-1', callbacks: {} });
     viewer.close();
     expect(createdPeers[0]._destroyed).toBe(true);
+  });
+
+  it('survives peer.call() returning undefined (peer is disconnected) and reports onError', () => {
+    // Regression: in real PeerJS 1.5.5, peer.call() returns undefined when the
+    // peer is in a disconnected state (e.g., the broker hasn't confirmed the
+    // viewer ID yet). We defer the call to 'open' so this should be rare in
+    // practice, but if it ever happens, the viewer must not throw — it must
+    // surface the failure to onError.
+    const onError = vi.fn();
+    expect(() => {
+      connectAsViewer({ hostId: 'room-1', callbacks: { onError } });
+      // Simulate 'open' but flip disconnected back to true mid-handshake
+      // (extreme race condition).
+      createdPeers[0]._disconnected = true;
+      createdPeers[0].emit('open');
+    }).not.toThrow();
+    expect(onError).toHaveBeenCalled();
+    const errArg = onError.mock.calls[0][0];
+    expect(errArg).toBeInstanceOf(Error);
+    expect(errArg.message).toMatch(/媒体|连接/);
   });
 });
