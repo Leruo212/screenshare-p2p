@@ -468,11 +468,20 @@ __peer_flow = {};
 // (`globalThis.Peer`). In tests we inject a mock by assigning
 // `globalThis.Peer = MockPeer` before calling these functions.
 //
-// We use PeerJS's MediaConnection ("call") to negotiate the WebRTC session.
-// PeerJS supports `peer.call(remoteId, null)` to mean "I have no local stream
-// to send; please send me one" — the receiver registers a 'stream' listener
-// on the returned MediaConnection and the remote side calls `.answer(stream)`
-// on its incoming MediaConnection to deliver its local stream.
+// Media direction: HOST → VIEWER.
+//
+// Why this direction? In PeerJS 1.5.5, `peer.call(remoteId, null)` returns
+// undefined because the library rejects calls without a local stream (see
+// node_modules-style check: `if (!stream) return`). The viewer has no local
+// stream to send (they want to RECEIVE the screen), so they cannot be the
+// caller. Instead:
+//
+//   - Viewer opens a data connection to the host (so the host learns the
+//     viewer's peer ID) and waits for an incoming media call.
+//   - When the host captures a screen stream and a viewer is connected, the
+//     host calls the viewer with the screen stream. The viewer receives it
+//     via `peer.on('call', mc)` and listens for 'stream' on the incoming
+//     MediaConnection.
 
 function requirePeer() {
   if (typeof globalThis.Peer !== 'function') {
@@ -485,59 +494,54 @@ function requirePeer() {
 
 // ---- Host ------------------------------------------------------------------
 //
-// Registers a Peer with id === roomId, then waits for a viewer to dial:
-//   - peer.on('connection')  → viewer opened a data channel to us
-//   - peer.on('call')        → viewer wants our screen stream
-//
-// In PeerJS, when the viewer does `peer.call(hostId, null)`, the host receives
-// the SAME MediaConnection via `peer.on('call', mc)`. To deliver our local
-// stream back, we call `mc.answer(localStream)` on that stored connection —
-// NOT a fresh `peer.call(viewerId, stream)`. A fresh call would create a
-// second, unrelated MediaConnection that the viewer's `on('stream')`
-// listener (attached to its outgoing call) would never receive.
-//
-// The 'connection' and 'call' events may arrive in either order. We buffer
-// whichever arrives first and only fire onViewerConnected + wire up
-// onViewerDisconnected / onError once BOTH are present.
+// Registers a Peer with id === roomId, then waits for a viewer to connect.
+// When the viewer is on the data channel and the host has a local screen
+// stream, the host pushes the stream to the viewer with `peer.call()`.
 function createHost({ roomId, callbacks }) {
   const Peer = requirePeer();
   const peer = new Peer(roomId);
 
   let viewerId = null;
   let dataConnection = null;
-  let mediaConnection = null;
+  let localStream = null;
 
-  function tryFireViewerConnected() {
-    if (!dataConnection || !mediaConnection) return;
-    viewerId = dataConnection.peer || dataConnection.remoteId;
+  function fireViewerConnected() {
     if (callbacks.onViewerDisconnected) {
       dataConnection.on('close', () => callbacks.onViewerDisconnected());
     }
-    callbacks.onViewerConnected?.(mediaConnection);
+    callbacks.onViewerConnected?.();
   }
 
   peer.on('connection', (conn) => {
     dataConnection = conn;
+    viewerId = conn.peer || conn.remoteId;
     if (callbacks.onError) {
       conn.on('error', (err) => callbacks.onError(err));
     }
-    tryFireViewerConnected();
+    // If a stream was already added (race: viewer joined after host picked
+    // a source), push it to the viewer now.
+    if (localStream) {
+      pushStreamToViewer();
+    } else {
+      fireViewerConnected();
+    }
   });
 
-  peer.on('call', (mc) => {
-    mediaConnection = mc;
-    if (callbacks.onError) {
-      mc.on('error', (err) => callbacks.onError(err));
+  function pushStreamToViewer() {
+    if (!viewerId || !localStream) return;
+    // The viewer listens for `peer.on('call', mc)` and reads `mc.on('stream')`,
+    // so this call surfaces the screen stream on the viewer side.
+    const call = peer.call(viewerId, localStream);
+    if (call) {
+      if (callbacks.onError) call.on('error', (err) => callbacks.onError(err));
+    } else if (callbacks.onError) {
+      // Should not happen — we have a valid localStream. Surface defensively.
+      callbacks.onError(
+        new Error('无法向观众推送屏幕流（peer.call 返回 undefined）')
+      );
     }
-    // The viewer dialed us to request our stream. We answer only when
-    // addLocalStream is called (host hasn't picked a source yet). For now
-    // we register a 'stream' listener defensively — the viewer sends no
-    // media, so this should never fire, but it keeps the API uniform.
-    mc.on('stream', (remoteStream) => {
-      callbacks.onRemoteStream?.(remoteStream);
-    });
-    tryFireViewerConnected();
-  });
+    fireViewerConnected();
+  }
 
   if (callbacks.onError) {
     peer.on('error', (err) => callbacks.onError(err));
@@ -545,22 +549,17 @@ function createHost({ roomId, callbacks }) {
 
   return {
     peer,
-    addLocalStream(localStream) {
-      if (!mediaConnection) {
-        throw new Error('No viewer has requested the stream yet.');
+    addLocalStream(stream) {
+      localStream = stream;
+      // If the viewer is already on the data channel, push immediately.
+      // Otherwise, the 'connection' handler will push once the viewer joins.
+      if (dataConnection) {
+        pushStreamToViewer();
       }
-      // Answer the viewer's existing MediaConnection with our local stream.
-      mediaConnection.answer(localStream);
-      return mediaConnection;
     },
     close() {
       try {
         dataConnection?.close();
-      } catch {
-        /* ignore */
-      }
-      try {
-        mediaConnection?.close();
       } catch {
         /* ignore */
       }
@@ -575,26 +574,16 @@ function createHost({ roomId, callbacks }) {
 
 // ---- Viewer ----------------------------------------------------------------
 //
-// Creates a Peer (broker assigns an id), then simultaneously:
-//   - opens a data connection to the host
-//   - calls the host with null media to request its screen stream
-//
-// When the host answers, the resulting MediaConnection emits 'stream' with
-// the host's local MediaStream.
-//
-// IMPORTANT: we must wait for the peer's 'open' event before calling
-// peer.connect() / peer.call(). In PeerJS 1.5.5, both return `undefined` while
-// the peer is in the "disconnected" state (pre-broker-handshake), and calling
-// `.on()` on undefined throws "Cannot read properties of undefined".
+// Creates a Peer (broker assigns an id), opens a data connection to the host
+// (so the host learns the viewer's ID), and listens for an incoming media
+// call from the host. When the call arrives with a 'stream' event, that's
+// the host's screen.
 function connectAsViewer({ hostId, callbacks }) {
   const Peer = requirePeer();
   const peer = new Peer();
 
-  // The connection handles aren't available until the broker has confirmed
-  // the viewer's ID. They may also be undefined if the peer flips to a
-  // disconnected state mid-handshake (rare but possible).
   let connection = null;
-  let mediaCall = null;
+  let incomingCall = null;
 
   function dial() {
     connection = peer.connect(hostId);
@@ -615,28 +604,31 @@ function connectAsViewer({ hostId, callbacks }) {
       callbacks.onError(new Error('无法建立数据通道'));
     }
 
-    // Request the host's stream. peer.call() with null media means
-    // "I have nothing to send, please stream TO me".
-    mediaCall = peer.call(hostId, null);
-    if (mediaCall) {
-      mediaCall.on('stream', (remoteStream) => {
+    // Listen for the host to call us with the screen stream.
+    peer.on('call', (mc) => {
+      incomingCall = mc;
+      if (callbacks.onError) {
+        mc.on('error', (err) => callbacks.onError(err));
+      }
+      mc.on('stream', (remoteStream) => {
         callbacks.onRemoteStream?.(remoteStream);
       });
-      mediaCall.on('close', () => {
+      mc.on('close', () => {
         // Don't double-fire: the data channel's close is the source of truth.
       });
-      if (callbacks.onError) {
-        mediaCall.on('error', (err) => callbacks.onError(err));
+      // Answer the call so WebRTC negotiation completes. We pass no stream
+      // because we have nothing to send back.
+      try {
+        mc.answer();
+      } catch (err) {
+        if (callbacks.onError) callbacks.onError(err);
       }
-    } else if (callbacks.onError) {
-      callbacks.onError(
-        new Error('无法发起媒体连接，请稍后重试（peer 未就绪）')
-      );
-    }
+    });
   }
 
-  // Defer dialing until the broker confirms the viewer's ID. If 'open' has
-  // already fired (rare in practice but possible), dial immediately.
+  // Defer dialing until the broker confirms the viewer's ID. peer.call /
+  // peer.connect on a disconnected peer either no-op or throw, depending on
+  // the PeerJS version.
   if (peer.open) {
     dial();
   } else {
@@ -658,7 +650,7 @@ function connectAsViewer({ hostId, callbacks }) {
         /* ignore */
       }
       try {
-        mediaCall?.close();
+        incomingCall?.close();
       } catch {
         /* ignore */
       }

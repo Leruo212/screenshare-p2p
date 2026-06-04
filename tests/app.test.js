@@ -269,10 +269,13 @@ describe('app.js — viewer flow (valid hash)', () => {
     await bootApp();
     fireOpenFor(createdPeers[0]);
 
-    // Simulate the host's stream arriving
-    const mediaCall = createdPeers[0]._mediaConns[0];
+    // Simulate the host calling us with a screen stream. The viewer
+    // listens for `peer.on('call', mc)` and reads the stream from `mc.on('stream')`.
+    const incoming = new MockMediaConnection('room-1', { id: 'host-screen' });
+    createdPeers[0].emit('call', incoming);
+
     const stream = { id: 'host-screen', getTracks: () => [] };
-    mediaCall.emit('stream', stream);
+    incoming.emit('stream', stream);
 
     const video = document.getElementById('remoteVideo');
     expect(video.srcObject).toBe(stream);
@@ -295,22 +298,22 @@ describe('app.js — viewer flow (valid hash)', () => {
 });
 
 describe('app.js — host start/stop sharing', () => {
-  // Helper: simulate the viewer having dialed in (data conn + media call).
-  function simulateViewerDialsIn() {
+  // Helper: simulate the viewer having opened a data connection. The host
+  // learns the viewer's ID from this and uses it for the outgoing media call.
+  // Also fires 'open' on the host peer so peer.call() works.
+  function simulateViewerJoins() {
+    fireOpenFor(createdPeers[0]);
     const c = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', c);
-    const mc = new MockMediaConnection('viewer-1', null);
-    createdPeers[0]._mediaConns.push(mc);
-    createdPeers[0].emit('call', mc);
-    return { dataConn: c, mediaConn: mc };
+    return { dataConn: c };
   }
 
-  it('host addLocalStream receives the captured stream after start sharing', async () => {
+  it('host pushes the captured stream to the viewer with peer.call()', async () => {
     __setHash('');
     await bootApp();
 
     document.getElementById('createBtn').click();
-    const { mediaConn: mc } = simulateViewerDialsIn();
+    simulateViewerJoins();
 
     // Enable and click start share (the host UI enables it on viewer connect)
     document.getElementById('startShareBtn').disabled = false;
@@ -320,9 +323,12 @@ describe('app.js — host start/stop sharing', () => {
 
     // getDisplayMedia should have been called
     expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalled();
-    // The media connection should have been answered with the captured stream
-    expect(mc.answeredWith).toBeTruthy();
-    expect(mc.answeredWith.id).toBe('mock-stream');
+    // The host should have made an outgoing peer.call() with the captured stream
+    expect(createdPeers[0]._mediaConns).toHaveLength(1);
+    const outgoing = createdPeers[0]._mediaConns[0];
+    expect(outgoing.remoteId).toBe('viewer-1');
+    expect(outgoing._stream).toBeTruthy();
+    expect(outgoing._stream.id).toBe('mock-stream');
   });
 
   it('stop sharing: track.onended is set, calling it triggers the stop flow', async () => {
@@ -330,14 +336,15 @@ describe('app.js — host start/stop sharing', () => {
     await bootApp();
 
     document.getElementById('createBtn').click();
-    const { mediaConn: mc } = simulateViewerDialsIn();
+    simulateViewerJoins();
 
     document.getElementById('startShareBtn').disabled = false;
     document.getElementById('startShareBtn').click();
     await new Promise((r) => setTimeout(r, 0));
 
-    // The mock stream has one track. Its onended callback should now be set.
-    const track = mc.answeredWith.getTracks()[0];
+    // The captured stream has one track. Its onended callback should be set.
+    const outgoing = createdPeers[0]._mediaConns[0];
+    const track = outgoing._stream.getTracks()[0];
     expect(track.onended).toBeTypeOf('function');
 
     const stopBtn = document.getElementById('stopShareBtn');

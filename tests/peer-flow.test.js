@@ -7,6 +7,12 @@ import { createHost, connectAsViewer } from '../src/peer-flow.js';
 //
 // PeerJS is loaded via <script> tag in the browser, exposing a global `Peer`.
 // In tests we inject a mock by assigning `globalThis.Peer = MockPeer`.
+//
+// Mock behaviour mirrors the real library:
+//   - peer.call(remoteId, null) returns undefined (real PeerJS rejects calls
+//     without a local stream).
+//   - peer.call(remoteId, stream) returns a MediaConnection when the peer
+//     is open.
 
 class MockDataConnection extends EventEmitter {
   constructor(remoteId) {
@@ -21,7 +27,6 @@ class MockDataConnection extends EventEmitter {
   close() {
     this.emit('close');
   }
-  // Helper for tests: simulate the 'open' event firing.
   simulateOpen() {
     this._open = true;
     this.emit('open');
@@ -50,12 +55,9 @@ class MockPeer extends EventEmitter {
     this._destroyed = false;
     this._dataConnections = [];
     this._mediaConnections = [];
-    // Mirrors PeerJS's `disconnected` flag. When true, peer.call() returns
-    // undefined (real PeerJS 1.5.5 does this — see node_modules reference).
+    // Mirrors PeerJS's `_disconnected` flag. After 'open' fires, real PeerJS
+    // sets this to false and the peer is ready to make calls.
     this._disconnected = true;
-    // If true, simulate a successful broker handshake: emit 'open' on the
-    // next tick so callers can register listeners first.
-    this._autoOpen = true;
   }
   connect(remoteId) {
     const conn = new MockDataConnection(remoteId);
@@ -63,17 +65,16 @@ class MockPeer extends EventEmitter {
     return conn;
   }
   call(remoteId, stream) {
-    if (this._disconnected) {
-      // Real PeerJS: peer.call() returns undefined when disconnected.
-      return undefined;
-    }
+    // Real PeerJS 1.5.5 source: `if (!stream) return;` — calls without a
+    // local stream return undefined. The mock matches that.
+    if (!stream) return undefined;
+    if (this._disconnected) return undefined;
     const mc = new MockMediaConnection(remoteId, stream);
     this._mediaConnections.push(mc);
     return mc;
   }
   destroy() {
     this._destroyed = true;
-    // Real PeerJS emits 'disconnected' on broker loss and 'close' on destroy.
     this.emit('disconnected');
     this.emit('close');
   }
@@ -82,15 +83,10 @@ class MockPeer extends EventEmitter {
 // ---- Lifecycle: install / uninstall the mock global ------------------------
 
 let createdPeers;
-let createdDataConns;
-let createdMediaConns;
 
 beforeEach(() => {
   createdPeers = [];
-  createdDataConns = [];
-  createdMediaConns = [];
 
-  // Wrap the constructor so tests can grab every Peer created.
   const TrackedPeer = function (id) {
     const p = new MockPeer(id);
     createdPeers.push(p);
@@ -104,10 +100,6 @@ afterEach(() => {
   delete globalThis.Peer;
 });
 
-// Helper: fire 'open' on the most-recently-created peer to simulate successful
-// registration with the broker. Also flips `_disconnected` to false so the
-// mock matches real PeerJS: after 'open' fires, call() returns a real
-// MediaConnection, not undefined.
 function fireOpenFor(peer) {
   peer._disconnected = false;
   peer.emit('open');
@@ -123,7 +115,7 @@ describe('createHost', () => {
     expect(typeof host.peer).toBe('object');
   });
 
-  it('does NOT fire onViewerConnected until both connection AND call have arrived', () => {
+  it('fires onViewerConnected when the data connection arrives', () => {
     const onViewerConnected = vi.fn();
     createHost({
       roomId: 'room-1',
@@ -131,45 +123,47 @@ describe('createHost', () => {
     });
     fireOpenFor(createdPeers[0]);
 
-    // Simulate the data channel arriving first. onViewerConnected should not
-    // fire yet — we still need the call.
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
-    expect(onViewerConnected).not.toHaveBeenCalled();
 
-    // Now the call arrives. Now the viewer is fully present.
-    const mc = new MockMediaConnection('viewer-1', null);
-    createdPeers[0].emit('call', mc);
     expect(onViewerConnected).toHaveBeenCalledTimes(1);
-    expect(onViewerConnected).toHaveBeenCalledWith(expect.any(MockMediaConnection));
   });
 
-  it('addLocalStream answers the existing MediaConnection with the local stream', () => {
+  it('addLocalStream calls peer.call(viewerId, stream) when viewer is already connected', () => {
     const host = createHost({ roomId: 'room-1', callbacks: {} });
     fireOpenFor(createdPeers[0]);
 
-    // Simulate the viewer dialing in (both data connection and call).
+    // Viewer joins first.
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
-    const mc = new MockMediaConnection('viewer-1', null);
-    createdPeers[0].emit('call', mc);
 
-    const fakeStream = { id: 'stream-1', getTracks: () => [] };
-    const answered = host.addLocalStream(fakeStream);
+    // Host picks a screen source.
+    const fakeStream = { id: 'screen-1', getTracks: () => [] };
+    host.addLocalStream(fakeStream);
 
-    // The host should call .answer(stream) on the *existing* MediaConnection,
-    // not create a new one. The viewer's stream listener is on this call.
-    expect(answered).toBe(mc);
-    expect(mc.answeredWith).toBe(fakeStream);
-    // No new outgoing call should have been created on the peer.
-    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
+    // Host should have created an OUTGOING call to the viewer with the stream.
+    expect(createdPeers[0]._mediaConnections).toHaveLength(1);
+    const outgoingCall = createdPeers[0]._mediaConnections[0];
+    expect(outgoingCall.remoteId).toBe('viewer-1');
+    expect(outgoingCall._stream).toBe(fakeStream);
   });
 
-  it('addLocalStream throws if no viewer has requested the stream yet', () => {
+  it('addLocalStream buffers the stream and pushes it when viewer joins later', () => {
     const host = createHost({ roomId: 'room-1', callbacks: {} });
     fireOpenFor(createdPeers[0]);
-    // Viewer has not dialed in.
-    expect(() => host.addLocalStream({ id: 's' })).toThrow(/no viewer/i);
+
+    // Host picks a source BEFORE the viewer joins.
+    const fakeStream = { id: 'screen-1', getTracks: () => [] };
+    host.addLocalStream(fakeStream);
+
+    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
+
+    // Now the viewer joins — host should push the stream.
+    const dataConn = createdPeers[0].connect('viewer-1');
+    createdPeers[0].emit('connection', dataConn);
+
+    expect(createdPeers[0]._mediaConnections).toHaveLength(1);
+    expect(createdPeers[0]._mediaConnections[0]._stream).toBe(fakeStream);
   });
 
   it('close() destroys the underlying peer', () => {
@@ -180,7 +174,7 @@ describe('createHost', () => {
 
   it('fires onError when the mock peer emits "error"', () => {
     const onError = vi.fn();
-    const host = createHost({
+    createHost({
       roomId: 'room-1',
       callbacks: { onError },
     });
@@ -188,26 +182,6 @@ describe('createHost', () => {
     createdPeers[0].emit('error', err);
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError).toHaveBeenCalledWith(err);
-  });
-
-  it('fires onRemoteStream when an incoming MediaConnection emits "stream"', () => {
-    const onRemoteStream = vi.fn();
-    const host = createHost({
-      roomId: 'room-1',
-      callbacks: { onRemoteStream },
-    });
-    fireOpenFor(createdPeers[0]);
-
-    // Host receives an incoming media call (this is the viewer requesting
-    // the stream by calling with null).
-    const mc = new MockMediaConnection('viewer-1', null);
-    createdPeers[0].emit('call', mc);
-
-    // The host module should have registered a 'stream' listener. Fire it.
-    const stream = { id: 'remote-stream' };
-    mc.emit('stream', stream);
-
-    expect(onRemoteStream).toHaveBeenCalledWith(stream);
   });
 
   it('fires onViewerDisconnected when the stored data connection emits "close"', () => {
@@ -218,13 +192,9 @@ describe('createHost', () => {
     });
     fireOpenFor(createdPeers[0]);
 
-    // Simulate the viewer fully present: data connection AND media call.
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
-    const mc = new MockMediaConnection('viewer-1', null);
-    createdPeers[0].emit('call', mc);
 
-    // Simulate viewer hanging up via the data channel.
     dataConn.emit('close');
 
     expect(onViewerDisconnected).toHaveBeenCalledTimes(1);
@@ -238,7 +208,6 @@ describe('connectAsViewer', () => {
     const viewer = connectAsViewer({ hostId: 'room-1', callbacks: {} });
     fireOpenFor(createdPeers[0]);
     expect(createdPeers).toHaveLength(1);
-    // Viewer does NOT pre-assign its own ID; the broker assigns one.
     expect(createdPeers[0].id).toBeUndefined();
     expect(createdPeers[0]._dataConnections).toHaveLength(1);
     expect(createdPeers[0]._dataConnections[0].remoteId).toBe('room-1');
@@ -254,25 +223,30 @@ describe('connectAsViewer', () => {
     expect(onConnected).toHaveBeenCalledTimes(1);
   });
 
-  it('calls peer.call(hostId, null) to request the stream from the host, AFTER open', () => {
+  it('does NOT make an outgoing media call (host will call us)', () => {
+    // In PeerJS 1.5.5, peer.call(remoteId, null) returns undefined because the
+    // library rejects calls without a stream. The viewer has no stream to
+    // send, so we don't call — we listen for the host to call us.
     connectAsViewer({ hostId: 'room-1', callbacks: {} });
-    // Before 'open' fires, no outgoing call has been made.
-    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
     fireOpenFor(createdPeers[0]);
-    expect(createdPeers[0]._mediaConnections).toHaveLength(1);
-    const call = createdPeers[0]._mediaConnections[0];
-    expect(call.remoteId).toBe('room-1');
-    // PeerJS supports calling with null media to mean "I want to receive".
-    expect(call._stream).toBeNull();
+    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
   });
 
-  it('fires onRemoteStream when the outgoing MediaConnection emits "stream"', () => {
+  it('answers an incoming media call from the host and fires onRemoteStream', () => {
     const onRemoteStream = vi.fn();
     connectAsViewer({ hostId: 'room-1', callbacks: { onRemoteStream } });
     fireOpenFor(createdPeers[0]);
-    const call = createdPeers[0]._mediaConnections[0];
+
+    // Simulate the host calling us with a screen stream.
+    const incoming = new MockMediaConnection('room-1', { id: 'screen-1' });
+    createdPeers[0].emit('call', incoming);
+
+    // Viewer should have called mc.answer() with no stream (we have nothing to send).
+    expect(incoming.answeredWith).toBeUndefined();
+
+    // When the host's stream arrives, fire onRemoteStream.
     const stream = { id: 'host-screen' };
-    call.emit('stream', stream);
+    incoming.emit('stream', stream);
     expect(onRemoteStream).toHaveBeenCalledWith(stream);
   });
 
@@ -297,25 +271,5 @@ describe('connectAsViewer', () => {
     const viewer = connectAsViewer({ hostId: 'room-1', callbacks: {} });
     viewer.close();
     expect(createdPeers[0]._destroyed).toBe(true);
-  });
-
-  it('survives peer.call() returning undefined (peer is disconnected) and reports onError', () => {
-    // Regression: in real PeerJS 1.5.5, peer.call() returns undefined when the
-    // peer is in a disconnected state (e.g., the broker hasn't confirmed the
-    // viewer ID yet). We defer the call to 'open' so this should be rare in
-    // practice, but if it ever happens, the viewer must not throw — it must
-    // surface the failure to onError.
-    const onError = vi.fn();
-    expect(() => {
-      connectAsViewer({ hostId: 'room-1', callbacks: { onError } });
-      // Simulate 'open' but flip disconnected back to true mid-handshake
-      // (extreme race condition).
-      createdPeers[0]._disconnected = true;
-      createdPeers[0].emit('open');
-    }).not.toThrow();
-    expect(onError).toHaveBeenCalled();
-    const errArg = onError.mock.calls[0][0];
-    expect(errArg).toBeInstanceOf(Error);
-    expect(errArg.message).toMatch(/媒体|连接/);
   });
 });
