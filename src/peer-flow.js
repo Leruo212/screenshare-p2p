@@ -25,15 +25,16 @@ function requirePeer() {
 //   - peer.on('connection')  → viewer opened a data channel to us
 //   - peer.on('call')        → viewer wants our screen stream
 //
-// When a viewer connects, we remember its data connection and listen for the
-// incoming call. We do NOT answer the call until the host picks a screen
-// (caller invokes addLocalStream), at which point we call the viewer back
-// with our local stream.
+// In PeerJS, when the viewer does `peer.call(hostId, null)`, the host receives
+// the SAME MediaConnection via `peer.on('call', mc)`. To deliver our local
+// stream back, we call `mc.answer(localStream)` on that stored connection —
+// NOT a fresh `peer.call(viewerId, stream)`. A fresh call would create a
+// second, unrelated MediaConnection that the viewer's `on('stream')`
+// listener (attached to its outgoing call) would never receive.
 export function createHost({ roomId, callbacks }) {
   const Peer = requirePeer();
   const peer = new Peer(roomId);
 
-  // Track the most recent viewer so addLocalStream can call them.
   let viewerId = null;
   let dataConnection = null;
   let mediaConnection = null;
@@ -41,7 +42,6 @@ export function createHost({ roomId, callbacks }) {
   peer.on('connection', (conn) => {
     dataConnection = conn;
     viewerId = conn.peer || conn.remoteId;
-    callbacks.onViewerConnected?.(conn);
 
     if (callbacks.onViewerDisconnected) {
       conn.on('close', () => callbacks.onViewerDisconnected());
@@ -57,6 +57,9 @@ export function createHost({ roomId, callbacks }) {
     mc.on('stream', (remoteStream) => {
       callbacks.onRemoteStream?.(remoteStream);
     });
+    // Both the data channel and the media call are now in place. Signal
+    // upstream that the viewer is fully present.
+    callbacks.onViewerConnected?.(mc);
   });
 
   if (callbacks.onError) {
@@ -66,16 +69,12 @@ export function createHost({ roomId, callbacks }) {
   return {
     peer,
     addLocalStream(localStream) {
-      if (!viewerId) {
-        throw new Error('No viewer connected; cannot call.');
+      if (!mediaConnection) {
+        throw new Error('No viewer has requested the stream yet.');
       }
-      // Place a fresh call to the viewer carrying our local stream.
-      const call = peer.call(viewerId, localStream);
-      // Listen for any stream the viewer might send back (none in v1).
-      call.on('stream', (remoteStream) => {
-        callbacks.onRemoteStream?.(remoteStream);
-      });
-      return call;
+      // Answer the viewer's existing MediaConnection with our local stream.
+      mediaConnection.answer(localStream);
+      return mediaConnection;
     },
     close() {
       try {

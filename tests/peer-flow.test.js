@@ -110,37 +110,53 @@ describe('createHost', () => {
     expect(typeof host.peer).toBe('object');
   });
 
-  it('fires onViewerConnected when the mock peer emits a "connection" event', () => {
+  it('does NOT fire onViewerConnected until both connection AND call have arrived', () => {
     const onViewerConnected = vi.fn();
-    const host = createHost({
+    createHost({
       roomId: 'room-1',
       callbacks: { onViewerConnected },
     });
     fireOpenFor(createdPeers[0]);
 
-    // Simulate a viewer dialing in: peer emits 'connection' with a data conn.
+    // Simulate the data channel arriving first. onViewerConnected should not
+    // fire yet — we still need the call.
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
+    expect(onViewerConnected).not.toHaveBeenCalled();
 
+    // Now the call arrives. Now the viewer is fully present.
+    const mc = new MockMediaConnection('viewer-1', null);
+    createdPeers[0].emit('call', mc);
     expect(onViewerConnected).toHaveBeenCalledTimes(1);
-    expect(onViewerConnected).toHaveBeenCalledWith(expect.any(MockDataConnection));
+    expect(onViewerConnected).toHaveBeenCalledWith(expect.any(MockMediaConnection));
   });
 
-  it('addLocalStream calls peer.call(viewerId, stream) and stores the call', () => {
+  it('addLocalStream answers the existing MediaConnection with the local stream', () => {
     const host = createHost({ roomId: 'room-1', callbacks: {} });
     fireOpenFor(createdPeers[0]);
 
-    // First, simulate a viewer joining so the host has someone to call.
+    // Simulate the viewer dialing in (both data connection and call).
     const dataConn = createdPeers[0].connect('viewer-1');
     createdPeers[0].emit('connection', dataConn);
+    const mc = new MockMediaConnection('viewer-1', null);
+    createdPeers[0].emit('call', mc);
 
     const fakeStream = { id: 'stream-1', getTracks: () => [] };
-    host.addLocalStream(fakeStream);
+    const answered = host.addLocalStream(fakeStream);
 
-    expect(createdPeers[0]._mediaConnections).toHaveLength(1);
-    const call = createdPeers[0]._mediaConnections[0];
-    expect(call.remoteId).toBe('viewer-1');
-    expect(call._stream).toBe(fakeStream);
+    // The host should call .answer(stream) on the *existing* MediaConnection,
+    // not create a new one. The viewer's stream listener is on this call.
+    expect(answered).toBe(mc);
+    expect(mc.answeredWith).toBe(fakeStream);
+    // No new outgoing call should have been created on the peer.
+    expect(createdPeers[0]._mediaConnections).toHaveLength(0);
+  });
+
+  it('addLocalStream throws if no viewer has requested the stream yet', () => {
+    const host = createHost({ roomId: 'room-1', callbacks: {} });
+    fireOpenFor(createdPeers[0]);
+    // Viewer has not dialed in.
+    expect(() => host.addLocalStream({ id: 's' })).toThrow(/no viewer/i);
   });
 
   it('close() destroys the underlying peer', () => {
