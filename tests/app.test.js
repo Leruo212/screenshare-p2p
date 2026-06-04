@@ -25,6 +25,12 @@ function buildDOM() {
     <section id="hostLobbyPanel" class="panel hidden">
       <a id="shareLink" href="#"></a>
       <button id="copyBtn">Copy</button>
+      <select id="qualitySelect">
+        <option value="720p">720p</option>
+        <option value="1080p" selected>1080p</option>
+        <option value="1440p">1440p</option>
+        <option value="source">source</option>
+      </select>
       <button id="startShareBtn" disabled>Start</button>
       <button id="stopShareBtn" class="hidden">Stop</button>
     </section>
@@ -34,7 +40,10 @@ function buildDOM() {
     </section>
 
     <section id="viewerStreamPanel" class="panel hidden">
-      <video id="remoteVideo"></video>
+      <div id="videoArea">
+        <video id="remoteVideo"></video>
+        <button id="fullscreenBtn">Fullscreen</button>
+      </div>
     </section>
   `;
 }
@@ -331,6 +340,44 @@ describe('app.js — host start/stop sharing', () => {
     expect(outgoing._stream.id).toBe('mock-stream');
   });
 
+  it('passes the host-selected quality into getDisplayMedia constraints', async () => {
+    __setHash('');
+    await bootApp();
+
+    document.getElementById('createBtn').click();
+    simulateViewerJoins();
+
+    // Change quality before clicking start share.
+    const select = document.getElementById('qualitySelect');
+    select.value = '720p';
+    select.dispatchEvent(new Event('change'));
+
+    document.getElementById('startShareBtn').disabled = false;
+    document.getElementById('startShareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(navigator.mediaDevices.getDisplayMedia).toHaveBeenCalled();
+    const callArgs = navigator.mediaDevices.getDisplayMedia.mock.calls[0][0];
+    expect(callArgs.video.width).toEqual({ ideal: 1280 });
+    expect(callArgs.video.height).toEqual({ ideal: 720 });
+  });
+
+  it('default quality is 1080p if the host does not change the selector', async () => {
+    __setHash('');
+    await bootApp();
+
+    document.getElementById('createBtn').click();
+    simulateViewerJoins();
+
+    document.getElementById('startShareBtn').disabled = false;
+    document.getElementById('startShareBtn').click();
+    await new Promise((r) => setTimeout(r, 0));
+
+    const callArgs = navigator.mediaDevices.getDisplayMedia.mock.calls[0][0];
+    expect(callArgs.video.width).toEqual({ ideal: 1920 });
+    expect(callArgs.video.height).toEqual({ ideal: 1080 });
+  });
+
   it('stop sharing: track.onended is set, calling it triggers the stop flow', async () => {
     __setHash('');
     await bootApp();
@@ -378,5 +425,71 @@ describe('app.js — copy link', () => {
     document.getElementById('copyBtn').click();
 
     expect(navigator.clipboard.writeText).toHaveBeenCalledWith(shareLink);
+  });
+});
+
+describe('app.js — fullscreen toggle', () => {
+  it('clicking #fullscreenBtn calls requestFullscreen on the video container', async () => {
+    __setHash('');
+    await bootApp();
+
+    const container = document.getElementById('videoArea');
+    const requestFn = vi.fn().mockResolvedValue(undefined);
+    container.requestFullscreen = requestFn;
+
+    document.getElementById('fullscreenBtn').click();
+
+    expect(requestFn).toHaveBeenCalledTimes(1);
+  });
+
+  it('exits fullscreen if already in fullscreen (Fullscreen API round-trip)', async () => {
+    __setHash('');
+    await bootApp();
+
+    const exitFn = vi.fn();
+    document.exitFullscreen = exitFn;
+    // Simulate the browser being in fullscreen.
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => document.getElementById('videoArea'),
+    });
+
+    document.getElementById('fullscreenBtn').click();
+
+    expect(exitFn).toHaveBeenCalled();
+
+    // Reset the override so subsequent tests see a "not in fullscreen" state.
+    Object.defineProperty(document, 'fullscreenElement', {
+      configurable: true,
+      get: () => null,
+    });
+  });
+
+  it('falls back to vendor-prefixed fullscreen API if standard one is missing', async () => {
+    __setHash('');
+    await bootApp();
+
+    const container = document.getElementById('videoArea');
+    const webkitFn = vi.fn().mockResolvedValue(undefined);
+    // Make sure neither the standard requestFullscreen nor the document-level
+    // fullscreenElement is set up. Some jsdom builds pre-define these as
+    // no-ops; we need to ensure the chain reaches the webkit fallback.
+    Object.defineProperty(container, 'requestFullscreen', {
+      configurable: true,
+      get: () => undefined,
+    });
+    Object.defineProperty(container, 'mozRequestFullScreen', {
+      configurable: true,
+      get: () => undefined,
+    });
+    Object.defineProperty(container, 'msRequestFullscreen', {
+      configurable: true,
+      get: () => undefined,
+    });
+    container.webkitRequestFullScreen = webkitFn;
+
+    document.getElementById('fullscreenBtn').click();
+
+    expect(webkitFn).toHaveBeenCalled();
   });
 });

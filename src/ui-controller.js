@@ -38,6 +38,9 @@ export function initUI({ stateMachine, callbacks }) {
     startShareBtn: $('startShareBtn'),
     stopShareBtn: $('stopShareBtn'),
     reconnectBtn: $('reconnectBtn'),
+    qualitySelect: $('qualitySelect'),
+    fullscreenBtn: $('fullscreenBtn'),
+    videoArea: $('videoArea'),
   };
 
   // Keep the current share link so the copy button can pass it to the
@@ -80,6 +83,14 @@ export function initUI({ stateMachine, callbacks }) {
     callbacks.onReconnect?.();
   });
 
+  on(els.qualitySelect, 'change', (e) => {
+    callbacks.onQualityChange?.(e.target.value);
+  });
+
+  on(els.fullscreenBtn, 'click', () => {
+    callbacks.onToggleFullscreen?.();
+  });
+
   // --- Public controller API ----------------------------------------------
 
   return {
@@ -119,6 +130,11 @@ export function initUI({ stateMachine, callbacks }) {
 
     setRemoteStream(stream) {
       els.remoteVideo.srcObject = stream;
+    },
+
+    getQuality() {
+      // Default to 1080p if the select isn't present (e.g. in tests).
+      return els.qualitySelect ? els.qualitySelect.value : '1080p';
     },
 
     showError(msg) {

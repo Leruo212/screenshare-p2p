@@ -68,10 +68,14 @@ async function startSharing(ui) {
 
   if (startBtn) startBtn.disabled = true;
 
+  // Read the host's current quality selection right before opening the picker
+  // so the user can change their mind up to the last second.
+  const quality = ui.getQuality();
+
   let stream;
   try {
     stream = await navigator.mediaDevices.getDisplayMedia(
-      buildDisplayMediaConstraints()
+      buildDisplayMediaConstraints(quality)
     );
   } catch (err) {
     if (err && err.name !== 'AbortError') {
@@ -285,6 +289,41 @@ async function copyLink(ui, url) {
   }, COPY_BUTTON_FLASH_MS);
 }
 
+// --- Fullscreen toggle (viewer) -------------------------------------------
+//
+// Uses the Fullscreen API on the video container (not the <video> element
+// itself — that way the fullscreen button stays visible inside the container).
+// ESC exits fullscreen natively; we just listen for the `fullscreenchange`
+// event to keep the button label in sync.
+
+function toggleFullscreen() {
+  const container = document.getElementById('videoArea');
+  if (!container) return;
+  if (document.fullscreenElement) {
+    document.exitFullscreen?.();
+    return;
+  }
+  // Vendor-prefixed fallbacks for older Safari (the rest of the app already
+  // excludes Safari, but fullscreen is harmless to support opportunistically).
+  const req =
+    container.requestFullscreen?.bind(container) ||
+    container.webkitRequestFullScreen?.bind(container) ||
+    container.mozRequestFullScreen?.bind(container) ||
+    container.msRequestFullscreen?.bind(container);
+  if (!req) {
+    console.warn('Fullscreen API not supported on this browser');
+    return;
+  }
+  try {
+    const result = req();
+    if (result && typeof result.catch === 'function') {
+      result.catch((err) => console.warn('Fullscreen request rejected:', err));
+    }
+  } catch (err) {
+    console.warn('Fullscreen request threw:', err);
+  }
+}
+
 // --- Bootstrap -------------------------------------------------------------
 
 function bootstrap() {
@@ -312,6 +351,12 @@ function bootstrap() {
       onStopSharing: () => stopSharing(ui),
       onCopyLink: (url) => copyLink(ui, url),
       onReconnect: () => window.location.reload(),
+      onQualityChange: () => {
+        // Quality selection is read at start-sharing time (see startSharing).
+        // This callback is wired so future "apply without restart" features
+        // can be added without re-plumbing events.
+      },
+      onToggleFullscreen: () => toggleFullscreen(),
     },
   });
 

@@ -43,6 +43,15 @@
           <button class="copy-btn" id="copyBtn" type="button">复制</button>
         </div>
       </div>
+      <div class="quality-row">
+        <label for="qualitySelect">画质：</label>
+        <select id="qualitySelect" class="quality-select">
+          <option value="720p">720p（标清，省带宽）</option>
+          <option value="1080p" selected>1080p（高清，推荐）</option>
+          <option value="1440p">1440p（2K）</option>
+          <option value="source">原始（不缩放）</option>
+        </select>
+      </div>
       <p class="hint">朋友连接后，可以点击"开始共享"。</p>
       <div class="row">
         <button class="btn btn-primary" id="startShareBtn" disabled>开始共享</button>
@@ -60,8 +69,12 @@
     <!-- Viewer Stream -->
     <div class="panel hidden" id="viewerStreamPanel">
       <div class="panel-title">共享画面</div>
-      <div class="video-area">
+      <div class="video-area" id="videoArea">
         <video id="remoteVideo" autoplay playsinline muted></video>
+        <button class="fullscreen-btn" id="fullscreenBtn" type="button" aria-label="全屏">
+          <span aria-hidden="true">⛶</span>
+        </button>
+        <div class="viewer-hint">右键视频可取消静音</div>
       </div>
     </div>
   </div>
