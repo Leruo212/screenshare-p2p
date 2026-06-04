@@ -9,6 +9,7 @@
     "build": "node build.js"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "vitest": "latest"
   }
 }
