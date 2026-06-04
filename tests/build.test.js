@@ -92,3 +92,41 @@ describe('build.js (template inliner)', () => {
     expect(/<script(?![^>]*type=["']module["'])[^>]*>/.test(html)).toBe(true);
   });
 });
+
+describe('build.js (ESM → classic script transform)', () => {
+  // The build must turn ES module syntax into plain script so the bundle
+  // works from file:// (where Chrome blocks <script type="module"> without
+  // a flag). This is the test for that transform.
+  it('strips `import { ... } from "./x.js"` and rewrites to local destructure (with `as` → `:` for JS compat)', async () => {
+    const { transform } = await import('../build.js');
+    const out = transform(
+      `import { a, b as c } from './foo.js';\nconsole.log(a, c);\n`,
+      'bar.js',
+    );
+    expect(out).not.toMatch(/^import /m);
+    // `b as c` is Python-style; JS destructuring needs `b: c`.
+    expect(out).toContain('const { a, b: c } = __foo');
+    expect(out).toContain('console.log(a, c)');
+  });
+
+  it('strips `export function` and registers the name on the module binding', async () => {
+    const { transform } = await import('../build.js');
+    const out = transform(
+      `export function greet() { return 'hi'; }\n`,
+      'm.js',
+    );
+    expect(out).not.toMatch(/^export /m);
+    expect(out).toContain('function greet()');
+    expect(out).toContain('__m.greet = greet');
+  });
+
+  it('strips `export const` and registers the name on the module binding', async () => {
+    const { transform } = await import('../build.js');
+    const out = transform(
+      `export const X = 42;\n`,
+      'm.js',
+    );
+    expect(out).toContain('const X = 42');
+    expect(out).toContain('__m.X = X');
+  });
+});
