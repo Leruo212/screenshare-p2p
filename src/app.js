@@ -33,7 +33,7 @@ function baseUrlFromLocation() {
 // Stops all tracks on the local stream, clears the video element, and
 // restores the UI to the "viewer connected, ready to share" state.
 
-function stopSharing() {
+function stopSharing(ui) {
   if (localStream) {
     try {
       localStream.getTracks().forEach((t) => t.stop());
@@ -47,11 +47,14 @@ function stopSharing() {
 
   const startBtn = document.getElementById('startShareBtn');
   const stopBtn = document.getElementById('stopShareBtn');
-  if (startBtn) {
-    startBtn.disabled = false;
-    startBtn.classList.remove('hidden');
-  }
+  if (startBtn) startBtn.classList.add('hidden');
   if (stopBtn) stopBtn.classList.add('hidden');
+
+  // v1 limitation: PeerJS MediaConnection.answer() is single-use. Restarting
+  // a share would require tearing down the host peer and forcing the viewer
+  // to reconnect. Surface a clear next-step to the user instead of silently
+  // re-enabling a button that would fail.
+  ui.showError('共享已停止。如需再次共享，请重新创建房间。');
 }
 
 // --- Start sharing (host) --------------------------------------------------
@@ -101,7 +104,7 @@ async function startSharing(ui) {
     hostFlow?.addLocalStream(stream);
   } catch (err) {
     ui.showError('共享失败: ' + err.message);
-    stopSharing();
+    stopSharing(ui);
     return;
   }
 
@@ -109,7 +112,7 @@ async function startSharing(ui) {
   // (e.g. user clicked the browser's stop button), tear down our state too.
   stream.getTracks().forEach((track) => {
     track.onended = () => {
-      stopSharing();
+      stopSharing(ui);
     };
   });
 
@@ -121,7 +124,12 @@ async function startSharing(ui) {
 
 // --- Host flow -------------------------------------------------------------
 
-function hostStart(ui) {
+function hostStart(ui, stateMachine) {
+  // Tear down any previous host peer so re-entering doesn't leak it.
+  hostFlow?.close();
+  hostFlow = null;
+  localStream = null;
+
   // Generate a room id, set the hash, and create the host peer.
   const roomId = generateRoomId();
   setHash(roomId);
@@ -146,21 +154,24 @@ function hostStart(ui) {
       roomId,
       callbacks: {
         onViewerConnected() {
+          stateMachine.transition('viewer-joined');
           ui.setStatus('观众已连接，准备共享', 'connected');
           const btn = document.getElementById('startShareBtn');
           if (btn) btn.disabled = false;
         },
         onViewerDisconnected() {
+          stateMachine.transition('disconnect');
           ui.setStatus('观众已离开', '');
           const btn = document.getElementById('startShareBtn');
           if (btn) btn.disabled = true;
           // Also stop any active share, since the viewer is gone.
-          if (localStream) stopSharing();
+          if (localStream) stopSharing(ui);
         },
         onRemoteStream() {
           // Not used in v1 — host only sends, never receives.
         },
         onError(err) {
+          stateMachine.transition('error');
           ui.showError('信令错误: ' + (err?.message || String(err)));
         },
       },
@@ -175,9 +186,10 @@ function hostStart(ui) {
 
 // --- Viewer flow -----------------------------------------------------------
 
-function viewerStart(ui, hostId) {
+function viewerStart(ui, stateMachine, hostId) {
   ui.showPanel('viewer-waiting');
   ui.setStatus('正在连接...', 'waiting');
+  stateMachine.transition('join-room');
 
   let viewer;
   try {
@@ -185,9 +197,11 @@ function viewerStart(ui, hostId) {
       hostId,
       callbacks: {
         onConnected() {
+          stateMachine.transition('viewer-connected-event');
           ui.setStatus('已连接，等待共享...', 'connected');
         },
         onRemoteStream(stream) {
+          stateMachine.transition('stream-received');
           ui.setRemoteStream(stream);
           ui.showPanel('viewer-stream');
           ui.setStatus('正在接收共享', 'connected');
@@ -202,12 +216,17 @@ function viewerStart(ui, hostId) {
           }
         },
         onDisconnected() {
+          stateMachine.transition('disconnect');
           ui.setStatus('连接已断开', '');
           ui.showError('与主机的连接已断开');
+          // Switch back to the waiting panel so the reconnect button
+          // (which lives inside viewerWaitingPanel) is reachable.
+          ui.showPanel('viewer-waiting');
           const reconnect = document.getElementById('reconnectBtn');
           if (reconnect) reconnect.classList.remove('hidden');
         },
         onError(err) {
+          stateMachine.transition('error');
           ui.showError('连接错误: ' + (err?.message || String(err)));
         },
       },
@@ -250,13 +269,15 @@ function bootstrap() {
   const ui = initUI({
     stateMachine,
     callbacks: {
-      onCreateRoom: () => hostStart(ui),
+      onCreateRoom: () => hostStart(ui, stateMachine),
       onJoinRoom: () => {
-        // v1: simple prompt. The page reloads with the new hash, which
-        // triggers the viewer flow on load.
+        // v1: simple prompt. Reload with the new hash so bootstrap runs and
+        // the viewer flow starts cleanly. (Hash-only mutation does not re-run
+        // bootstrap and would leave the user on the landing panel.)
         const entered = window.prompt('请输入房间号（例如 Xxxx-Yyyy-Zzzz）：');
         if (entered && entered.trim().length > 0) {
           window.location.hash = `#${entered.trim()}`;
+          window.location.reload();
         }
       },
       onStartSharing: () => {
@@ -264,7 +285,7 @@ function bootstrap() {
           ui.showError('共享失败: ' + (err?.message || String(err)));
         });
       },
-      onStopSharing: () => stopSharing(),
+      onStopSharing: () => stopSharing(ui),
       onCopyLink: (url) => copyLink(ui, url),
       onReconnect: () => window.location.reload(),
     },
@@ -273,7 +294,7 @@ function bootstrap() {
   // Initial routing: hash with a valid room id -> viewer flow; else -> landing.
   const initial = getRoomIdFromHash(window.location.hash);
   if (initial) {
-    viewerStart(ui, initial);
+    viewerStart(ui, stateMachine, initial);
   } else {
     ui.showPanel('landing');
     ui.setStatus('未连接', '');

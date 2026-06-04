@@ -85,8 +85,10 @@ export function initUI({ stateMachine, callbacks }) {
   return {
     setStatus(text, type) {
       els.statusText.textContent = text;
-      // Reset the dot's color classes then add the requested type.
-      els.statusDot.className = '';
+      // Reset the dot's color classes while keeping the base 'status-dot'
+      // class (otherwise the dot loses its size/shape and collapses).
+      const COLOR_CLASSES = ['connected', 'waiting', 'error'];
+      els.statusDot.classList.remove(...COLOR_CLASSES);
       if (type) {
         els.statusDot.classList.add(type);
       }

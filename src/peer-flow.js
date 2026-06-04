@@ -31,6 +31,10 @@ function requirePeer() {
 // NOT a fresh `peer.call(viewerId, stream)`. A fresh call would create a
 // second, unrelated MediaConnection that the viewer's `on('stream')`
 // listener (attached to its outgoing call) would never receive.
+//
+// The 'connection' and 'call' events may arrive in either order. We buffer
+// whichever arrives first and only fire onViewerConnected + wire up
+// onViewerDisconnected / onError once BOTH are present.
 export function createHost({ roomId, callbacks }) {
   const Peer = requirePeer();
   const peer = new Peer(roomId);
@@ -39,17 +43,28 @@ export function createHost({ roomId, callbacks }) {
   let dataConnection = null;
   let mediaConnection = null;
 
+  function tryFireViewerConnected() {
+    if (!dataConnection || !mediaConnection) return;
+    viewerId = dataConnection.peer || dataConnection.remoteId;
+    if (callbacks.onViewerDisconnected) {
+      dataConnection.on('close', () => callbacks.onViewerDisconnected());
+    }
+    callbacks.onViewerConnected?.(mediaConnection);
+  }
+
   peer.on('connection', (conn) => {
     dataConnection = conn;
-    viewerId = conn.peer || conn.remoteId;
-
-    if (callbacks.onViewerDisconnected) {
-      conn.on('close', () => callbacks.onViewerDisconnected());
+    if (callbacks.onError) {
+      conn.on('error', (err) => callbacks.onError(err));
     }
+    tryFireViewerConnected();
   });
 
   peer.on('call', (mc) => {
     mediaConnection = mc;
+    if (callbacks.onError) {
+      mc.on('error', (err) => callbacks.onError(err));
+    }
     // The viewer dialed us to request our stream. We answer only when
     // addLocalStream is called (host hasn't picked a source yet). For now
     // we register a 'stream' listener defensively — the viewer sends no
@@ -57,9 +72,7 @@ export function createHost({ roomId, callbacks }) {
     mc.on('stream', (remoteStream) => {
       callbacks.onRemoteStream?.(remoteStream);
     });
-    // Both the data channel and the media call are now in place. Signal
-    // upstream that the viewer is fully present.
-    callbacks.onViewerConnected?.(mc);
+    tryFireViewerConnected();
   });
 
   if (callbacks.onError) {
@@ -120,6 +133,9 @@ export function connectAsViewer({ hostId, callbacks }) {
   connection.on('data', () => {
     // No data-channel protocol in v1.
   });
+  if (callbacks.onError) {
+    connection.on('error', (err) => callbacks.onError(err));
+  }
 
   // Request the host's stream.
   const mediaCall = peer.call(hostId, null);
@@ -129,6 +145,9 @@ export function connectAsViewer({ hostId, callbacks }) {
   mediaCall.on('close', () => {
     // Don't double-fire: the data channel's close is the source of truth.
   });
+  if (callbacks.onError) {
+    mediaCall.on('error', (err) => callbacks.onError(err));
+  }
 
   if (callbacks.onError) {
     peer.on('error', (err) => callbacks.onError(err));
