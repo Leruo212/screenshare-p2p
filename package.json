@@ -1,0 +1,14 @@
+{
+  "name": "screenshare-p2p",
+  "version": "2.0.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node build.js"
+  },
+  "devDependencies": {
+    "vitest": "latest"
+  }
+}
