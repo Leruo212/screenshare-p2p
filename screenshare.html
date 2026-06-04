@@ -1272,7 +1272,20 @@ function viewerStart(ui, stateMachine, hostId) {
         },
         onError(err) {
           stateMachine.transition('error');
-          ui.showError('连接错误: ' + (err?.message || String(err)));
+          // PeerJS throws English error messages; translate the common ones
+          // to Chinese for the user.
+          const raw = err?.message || String(err);
+          const msg =
+            /could not connect to peer/i.test(raw)
+              ? '连接不到主机。请确认链接是否正确、主机是否仍在共享。'
+              : /peer not connected/i.test(raw)
+              ? '连接尚未建立，请稍后重试。'
+              : '连接错误: ' + raw;
+          ui.showError(msg);
+          // Show the reconnect button so the user can retry without reloading.
+          ui.showPanel('viewer-waiting');
+          const reconnect = document.getElementById('reconnectBtn');
+          if (reconnect) reconnect.classList.remove('hidden');
         },
       },
     });
