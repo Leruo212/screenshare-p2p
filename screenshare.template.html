@@ -3,83 +3,92 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ScreenShare P2P</title>
+  <title>ScreenShare — P2P 屏幕共享</title>
+  <meta name="description" content="无需中转的 P2P 屏幕共享。链接一发，对方就能看到你的屏幕。">
   <style>/* __CSS__ */</style>
 </head>
 <body>
-  <div class="container">
-    <header class="page-header">
-      <h1>ScreenShare P2P</h1>
-      <p class="subtitle">P2P直连 · 无需中转 · 链接分享即可</p>
+  <div class="page">
+    <header class="masthead">
+      <div class="masthead-mark">S/</div>
+      <div class="masthead-meta">
+        <span class="status-line">
+          <span class="status-dot" id="statusDot" aria-hidden="true"></span>
+          <span id="statusText">未连接</span>
+        </span>
+      </div>
     </header>
 
-    <div class="status-bar">
-      <div class="status-row">
-        <span class="status-dot" id="statusDot"></span>
-        <span id="statusText">未连接</span>
-      </div>
-    </div>
+    <main class="stage">
+      <div class="error hidden" id="errorToast" role="alert"></div>
 
-    <div class="error hidden" id="errorToast" role="alert"></div>
+      <!-- Landing -->
+      <section class="panel" id="landingPanel" aria-labelledby="landingTitle">
+        <p class="eyebrow">第一步</p>
+        <h1 class="display" id="landingTitle">把你的屏幕，<br>发给一个人。</h1>
+        <p class="lede">点下面的按钮，得到一个链接，发给对方。他打开就会看到你正在看的东西。</p>
+        <div class="cta-row">
+          <button class="btn btn-primary" id="createBtn" type="button">开始共享</button>
+          <button class="btn btn-ghost" id="joinBtn" type="button">用链接加入</button>
+        </div>
+      </section>
 
-    <!-- Landing -->
-    <div class="panel" id="landingPanel">
-      <div class="panel-title">开始</div>
-      <p class="panel-hint">创建一个房间并把链接发给朋友，或加入朋友发来的链接（链接会带 # 房间号）。</p>
-      <div class="row">
-        <button class="btn btn-primary" id="createBtn">创建房间</button>
-        <button class="btn btn-secondary" id="joinBtn">加入房间</button>
-      </div>
-    </div>
-
-    <!-- Host Lobby -->
-    <div class="panel hidden" id="hostLobbyPanel">
-      <div class="panel-title">你的房间</div>
-      <p class="panel-hint">把下面的链接发给朋友。朋友打开后会自动连接。</p>
-      <div class="info-box">
-        <h4>分享链接</h4>
-        <div class="share-link-row">
+      <!-- Host Lobby -->
+      <section class="panel hidden" id="hostLobbyPanel" aria-labelledby="hostTitle">
+        <p class="eyebrow">房间已就绪</p>
+        <h2 class="display" id="hostTitle">把这个链接<br>发给对方。</h2>
+        <p class="lede">他打开后会自动连过来。在那之前你什么都不用做。</p>
+        <div class="link-block">
           <a id="shareLink" target="_blank" rel="noopener"></a>
           <button class="copy-btn" id="copyBtn" type="button">复制</button>
         </div>
-      </div>
-      <div class="quality-row">
-        <label for="qualitySelect">画质：</label>
-        <select id="qualitySelect" class="quality-select">
-          <option value="720p">720p（标清，省带宽）</option>
-          <option value="1080p" selected>1080p（高清，推荐）</option>
-          <option value="1440p">1440p（2K）</option>
-          <option value="source">原始（不缩放）</option>
-        </select>
-      </div>
-      <p class="hint">朋友连接后，可以点击"开始共享"。</p>
-      <div class="row">
-        <button class="btn btn-primary" id="startShareBtn" disabled>开始共享</button>
-        <button class="btn btn-secondary hidden" id="stopShareBtn">停止共享</button>
-      </div>
-    </div>
+        <div class="quality-row">
+          <label for="qualitySelect">画质</label>
+          <select id="qualitySelect" class="quality-select">
+            <option value="720p">720p · 省带宽</option>
+            <option value="1080p" selected>1080p · 推荐</option>
+            <option value="1440p">1440p · 2K 原生</option>
+            <option value="source">原始</option>
+          </select>
+        </div>
+        <div class="cta-row">
+          <button class="btn btn-primary" id="startShareBtn" type="button" disabled>开始共享</button>
+          <button class="btn btn-ghost hidden" id="stopShareBtn" type="button">停止</button>
+        </div>
+      </section>
 
-    <!-- Viewer Waiting -->
-    <div class="panel hidden" id="viewerWaitingPanel">
-      <div class="panel-title">正在连接</div>
-      <p class="panel-hint">等待主机开始共享屏幕...</p>
-      <button class="btn btn-secondary hidden" id="reconnectBtn">重新连接</button>
-    </div>
+      <!-- Viewer Waiting -->
+      <section class="panel hidden" id="viewerWaitingPanel" aria-labelledby="waitingTitle">
+        <p class="eyebrow">正在连接</p>
+        <h2 class="display" id="waitingTitle">等他<br>开始共享。</h2>
+        <p class="lede">已经连上主机了。他点开始共享，你就能看到画面。</p>
+        <button class="btn btn-ghost hidden" id="reconnectBtn" type="button">重新连接</button>
+      </section>
 
-    <!-- Viewer Stream -->
-    <div class="panel hidden" id="viewerStreamPanel">
-      <div class="panel-title">共享画面</div>
-      <div class="video-area" id="videoArea">
-        <video id="remoteVideo" autoplay playsinline muted></video>
-        <button class="fullscreen-btn" id="fullscreenBtn" type="button" aria-label="全屏">
-          <span aria-hidden="true">⛶</span>
-        </button>
-        <button class="unmute-btn" id="unmuteBtn" type="button" aria-label="取消静音">
-          <span class="unmute-icon" aria-hidden="true">🔇</span>
-          <span class="unmute-label">已静音（点此取消）</span>
-        </button>
-      </div>
-    </div>
+      <!-- Viewer Stream -->
+      <section class="panel panel-stream hidden" id="viewerStreamPanel" aria-labelledby="streamTitle">
+        <p class="eyebrow">正在接收</p>
+        <h2 class="display sr-only" id="streamTitle">共享画面</h2>
+        <div class="video-area" id="videoArea">
+          <video id="remoteVideo" autoplay playsinline muted></video>
+          <div class="video-overlay">
+            <button class="icon-btn fullscreen-btn" id="fullscreenBtn" type="button" aria-label="全屏">
+              <span aria-hidden="true">⛶</span>
+            </button>
+            <button class="unmute-btn" id="unmuteBtn" type="button" aria-label="取消静音">
+              <span class="unmute-icon" aria-hidden="true">🔇</span>
+              <span class="unmute-label">已静音 · 点此取消</span>
+            </button>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footnote">
+      <span>P2P · 端到端 · 无需账号</span>
+      <span class="dot" aria-hidden="true">·</span>
+      <span>视频不经服务器</span>
+    </footer>
   </div>
 
   <!-- PeerJS via CDN. Loaded synchronously so window.Peer is available
