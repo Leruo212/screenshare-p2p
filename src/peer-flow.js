@@ -28,6 +28,30 @@ function requirePeer() {
   return globalThis.Peer;
 }
 
+// ICE servers (STUN + TURN) injected into PeerJS.
+//
+// Why we need TURN: WebRTC prefers a direct UDP path between the two peers.
+// That path is blocked by ~30% of consumer networks — symmetric NAT
+// (common on Chinese FTTR, 4G/5G CGNAT, corporate firewalls, hotel WiFi)
+// drops inbound UDP. STUN can detect the public IP but cannot punch through;
+// only TURN (a relay) saves the connection. The OpenRelay project runs a free
+// public TURN pool with no authentication — small quota, fine for friends.
+//
+// Both sides MUST have the same ICE config. We pass the same array to the
+// host and viewer Peer constructors.
+const ICE_SERVERS = [
+  // Public STUN (no auth, free). Used for path discovery.
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:stun.miwifi.com:3478' }, // Xiaomi router STUN, useful in CN
+  // OpenRelay TURN (no auth). Provides UDP + TCP + TLS relay endpoints.
+  // Suffix ?transport= picks the protocol for that URL.
+  { urls: 'turn:openrelay.metered.com:80', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.com:443', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.com:3478', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.com:3478?transport=tcp', username: 'openrelayproject', credential: 'openrelayproject' },
+  { urls: 'turn:openrelay.metered.com:3478?transport=udp', username: 'openrelayproject', credential: 'openrelayproject' },
+];
+
 // ---- Host ------------------------------------------------------------------
 //
 // Registers a Peer with id === roomId, then waits for a viewer to connect.
@@ -35,7 +59,7 @@ function requirePeer() {
 // stream, the host pushes the stream to the viewer with `peer.call()`.
 export function createHost({ roomId, callbacks }) {
   const Peer = requirePeer();
-  const peer = new Peer(roomId);
+  const peer = new Peer(roomId, { config: { iceServers: ICE_SERVERS } });
 
   let viewerId = null;
   let dataConnection = null;
@@ -87,6 +111,25 @@ export function createHost({ roomId, callbacks }) {
         pc.addEventListener('iceconnectionstatechange', logIce);
         pc.addEventListener('connectionstatechange', logIce);
         logIce();
+        // If ICE stays failed/disconnected for >5s, surface a clear error
+        // to the user. This is the most common cause of cross-network black
+        // screens: direct UDP blocked, TURN relay unreachable.
+        let iceFailureTimer = null;
+        const watchIce = () => {
+          if (iceFailureTimer) clearTimeout(iceFailureTimer);
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            iceFailureTimer = setTimeout(() => {
+              if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                const err = new Error(
+                  'ICE 协商失败：无法建立直连或 TURN 中继。两端网络可能互相屏蔽 UDP。'
+                );
+                console.error('[host] ICE failed after 5s, surfacing to UI');
+                callbacks.onError?.(err);
+              }
+            }, 5000);
+          }
+        };
+        pc.addEventListener('iceconnectionstatechange', watchIce);
       } else {
         console.warn('[host] call.peerConnection is undefined — cannot diagnose ICE');
       }
@@ -136,7 +179,7 @@ export function createHost({ roomId, callbacks }) {
 // the host's screen.
 export function connectAsViewer({ hostId, callbacks }) {
   const Peer = requirePeer();
-  const peer = new Peer();
+  const peer = new Peer(undefined, { config: { iceServers: ICE_SERVERS } });
 
   let connection = null;
   let incomingCall = null;
@@ -185,6 +228,33 @@ export function connectAsViewer({ hostId, callbacks }) {
         console.error('[viewer] mc.answer() rejected:', err);
         if (callbacks.onError) callbacks.onError(err);
       });
+      // Watch for ICE failure on the incoming media connection. If ICE stays
+      // failed/disconnected for >5s, surface a clear error so the user knows
+      // the network blocked the connection (rather than seeing a silent
+      // black screen and wondering what went wrong).
+      const pc = mc.peerConnection;
+      if (pc) {
+        let iceFailureTimer = null;
+        const watchIce = () => {
+          console.log(
+            `[viewer] ICE state: ${pc.iceConnectionState} | conn: ${pc.connectionState}`
+          );
+          if (iceFailureTimer) clearTimeout(iceFailureTimer);
+          if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+            iceFailureTimer = setTimeout(() => {
+              if (pc.iceConnectionState === 'failed' || pc.iceConnectionState === 'disconnected') {
+                const err = new Error(
+                  'ICE 协商失败：无法建立直连或 TURN 中继。两端网络可能互相屏蔽 UDP。'
+                );
+                console.error('[viewer] ICE failed after 5s, surfacing to UI');
+                callbacks.onError?.(err);
+              }
+            }, 5000);
+          }
+        };
+        pc.addEventListener('iceconnectionstatechange', watchIce);
+        watchIce();
+      }
     });
   }
 
