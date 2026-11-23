@@ -1,5 +1,7 @@
 # ScreenShare P2P
 
+<p align="right"><a href="README.en.md"><img src="https://img.shields.io/badge/English-SWITCH-1F4E79?style=flat-square" alt="Read in English"></a></p>
+
 朋友之间一键共享屏幕。无需云服务器，浏览器直连，跨网络工作。
 
 ![ScreenShare P2P 首页](assets/screenshare-hero.png)
